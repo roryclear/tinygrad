@@ -32,12 +32,95 @@ libobjc.sel_registerName.restype = objc_id
 libmetal.MTLCreateSystemDefaultDevice.restype = objc_instance
 libdispatch.dispatch_data_create.restype = objc_instance
 
+objc_names = {}
+def objc_name(x,selector=None,og=True):
+  if type(x) == list:
+    return ("(id<MTLResource> []){"+str([objc_name(i) for i in x])[1:-1]+"}").replace("'","")
+  x_s = str(x)
+  if type(x) == tuple:
+    if selector == "executeCommandsInBuffer:withRange:": return "NSMakeRange" + x_s
+    return "MTLSizeMake" + x_s
+  if x_s == "True": return "true"
+  if x_s == "False": return "false"
+  if ")" in x_s: return "&error"
+  if "0x" not in x_s: 
+    ret = x_s.replace("b'", "").replace("'", "")
+    if ret == "None": return "Nil"
+    return ret
+  ret = x_s[x_s.index("0x")+1:x_s.index(">")]
+  if ret in objc_names:
+    if og == False: objc_names[ret] += 1
+  else:
+    objc_names[ret] = 0
+  return ret + "_" + str(objc_names[ret])
+
+objc_types = {"newCommandQueueWithMaxCommandBufferCount:":"id<MTLCommandQueue> ","newSharedEvent":"id<MTLSharedEvent> ",
+              "stringWithUTF8String:":"NSString *","newBufferWithLength:options:":"id<MTLBuffer> ",
+              "contents":"void *","newLibraryWithData:error:":"id<MTLLibrary> ","newFunctionWithName:":"id<MTLFunction> ",
+              "newComputePipelineStateWithDescriptor:options:reflection:error:":"id<MTLComputePipelineState> ",
+              "commandBuffer":"id<MTLCommandBuffer> ","computeCommandEncoder":"id<MTLComputeCommandEncoder> ",
+              "newIndirectCommandBufferWithDescriptor:maxCommandCount:options:":"id<MTLIndirectCommandBuffer> ",
+              "indirectComputeCommandAtIndex:":"id<MTLIndirectComputeCommand> "}
+
+quotes = {"stringWithUTF8String","setBytes"}
+
 T = TypeVar("T")
 # Ignore mypy error reporting incompatible default, because typevar default only works on python 3.12
 def msg(ptr: objc_id, selector: str, /, *args: Any, restype: type[T] = objc_id) -> T: # type: ignore [assignment]
   sender = libobjc["objc_msgSend"] # Using attribute access returns a new reference so setting restype is safe
   sender.restype = restype
   return sender(ptr, sel(selector), *args)
+
+T = TypeVar("T")
+# Ignore mypy error reporting incompatible default, because typevar default only works on python 3.12
+def msg_ios(ptr: objc_id, selector: str, /, *args: Any, restype: type[T] = None) -> T: # type: ignore [assignment]
+  sender = libobjc["objc_msgSend"] # Using attribute access returns a new reference so setting restype is safe
+  sender.restype = restype
+  args_copy = []
+  for i,x in enumerate(args):
+    if type(x) == tuple:
+      args_copy.append(to_struct(*x))
+    elif type(x) == list:
+      args_copy.append((objc_id * len(x))(*x))
+    else:
+      args_copy.append(x)
+  if type(ptr) == bytes:
+    ret = sender(libobjc.objc_getClass(ptr), sel(selector), *args_copy)
+  else:
+    ret = sender(ptr, sel(selector), *args_copy)
+  if selector == "new":
+    file = open("metaltiny/f.m","a")
+    file.write(objc_name(ptr) + " *"+objc_name(ret,og=False)+" = ["+objc_name(ptr)+" new];\n")
+    file.close()
+    return ret
+
+  line = ""
+  selector_in = selector
+  if ":" in selector:
+    labels = [selector[:selector.index(":")]]
+  else:
+    labels = [selector]
+  if restype != None:
+    line +=  objc_types[selector] + objc_name(ret,og=False) + " = "
+  if ":" in selector:
+    selector = selector[selector.index(":")+1:]
+  while ":" in selector: #TODO
+    labels.append(selector[:selector.index(":")])
+    selector = selector[selector.index(":")+1:]
+  line += "[" + objc_name(ptr) + " "
+  for i,a in enumerate(labels):
+    line += a
+    if i < len(args):
+      line += ": "
+      if a in quotes: line += "\""
+      line += objc_name(args[i],selector=selector_in)
+      if a in quotes: line += "\""
+      line += " "
+  line += "];"
+  file = open("metaltiny/f.m","a")
+  file.write(line + "\n")
+  file.close()
+  return ret
 
 def to_ns_str(s: str): return msg(libobjc.objc_getClass(b"NSString"), "stringWithUTF8String:", s.encode(), restype=objc_instance)
 
@@ -47,7 +130,7 @@ def to_struct(*t: int, _type: type = ctypes.c_ulong):
   return Struct(*t)
 
 def wait_check(cbuf: Any):
-  msg(cbuf, "waitUntilCompleted")
+  msg_ios(cbuf, "waitUntilCompleted")
   error_check(msg(cbuf, "error", restype=objc_instance))
 
 def elapsed_time(cbuf: objc_id):
@@ -59,15 +142,20 @@ def error_check(error: objc_instance, error_constructor: type[Exception] = Runti
 
 class MetalCompiler(Compiler):
   def __init__(self, device:Optional[MetalDevice]):
+    if os.path.exists("metaltiny/f.metal"):
+      os.remove("metaltiny/f.metal")
     self.device = device
     super().__init__("compile_metal")
   def compile(self, src:str) -> bytes:
+    file = open("metaltiny/f.metal", "a")
+    file.write(src+"\n")
+    file.close()
     if self.device is None:
       # NOTE: if you run llvm-dis on "air" you can see the llvm bytecode
       air = subprocess.check_output(['xcrun', '-sdk', 'macosx', 'metal', '-x', 'metal', '-c', '-', '-o', '-'], input=src.encode('utf-8'))
       return subprocess.check_output(['xcrun', '-sdk', 'macosx', 'metallib', '-', '-o', '-'], input=air)
     options = msg(libobjc.objc_getClass(b"MTLCompileOptions"), "new", restype=objc_instance)
-    msg(options, "setFastMathEnabled:", getenv("METAL_FAST_MATH"))
+    msg_ios(options, "setFastMathEnabled:", getenv("METAL_FAST_MATH"))
     compileError = objc_instance()
     library = msg(self.device.device, "newLibraryWithSource:options:error:", to_ns_str(src),
                   options, ctypes.byref(compileError), restype=objc_instance)
@@ -91,11 +179,16 @@ class MetalProgram:
     self.library = msg(self.device.device, "newLibraryWithData:error:", data, ctypes.byref(error_library_creation), restype=objc_instance)
     error_check(error_library_creation)
     self.fxn = msg(self.library, "newFunctionWithName:", to_ns_str(name), restype=objc_instance)
-    descriptor = msg(libobjc.objc_getClass(b"MTLComputePipelineDescriptor"), "new", restype=objc_instance)
-    msg(descriptor, "setComputeFunction:", self.fxn)
-    msg(descriptor, "setSupportIndirectCommandBuffers:", True)
+    file = open("metaltiny/f.m","a") #TODO use data instead of file
+    #file.write("id<MTLLibrary> "+objc_name(self.library)+" = ["+objc_name(self.device.device)+" newDefaultLibrary];\n")
+    file.write("id<MTLFunction> "+objc_name(self.fxn,og=False)+" = [library newFunctionWithName: @\""+name+"\" ];\n")
+    file.close()
+    error_check(error_library_creation)
+    descriptor = msg_ios(b"MTLComputePipelineDescriptor", "new", restype=objc_instance)
+    msg_ios(descriptor, "setComputeFunction:", self.fxn)
+    msg_ios(descriptor, "setSupportIndirectCommandBuffers:", True)
     error_pipeline_creation = objc_instance()
-    self.pipeline_state = msg(self.device.device, "newComputePipelineStateWithDescriptor:options:reflection:error:",
+    self.pipeline_state = msg_ios(self.device.device, "newComputePipelineStateWithDescriptor:options:reflection:error:",
       descriptor, MTLPipelineOption.MTLPipelineOptionNone, None, ctypes.byref(error_pipeline_creation), restype=objc_instance)
     error_check(error_pipeline_creation)
 
@@ -106,13 +199,14 @@ class MetalProgram:
       memory_length = msg(self.pipeline_state, "staticThreadgroupMemoryLength", restype=ctypes.c_ulong)
       raise RuntimeError(f"local size {local_size} bigger than {max_total_threads} with exec width {exec_width} memory length {memory_length}")
     command_buffer = msg(self.device.mtl_queue, "commandBuffer", restype=objc_instance)
-    encoder = msg(command_buffer, "computeCommandEncoder", restype=objc_instance)
-    msg(encoder, "setComputePipelineState:", self.pipeline_state)
-    for i,a in enumerate(bufs): msg(encoder, "setBuffer:offset:atIndex:", a.buf, a.offset, i)
-    for i,a in enumerate(vals,start=len(bufs)): msg(encoder, "setBytes:length:atIndex:", bytes(ctypes.c_int(a)), 4, i)
-    msg(encoder, "dispatchThreadgroups:threadsPerThreadgroup:", to_struct(*global_size), to_struct(*local_size))
-    msg(encoder, "endEncoding")
-    msg(command_buffer, "commit")
+    command_buffer = msg_ios(self.device.mtl_queue, "commandBuffer", restype=objc_instance)
+    encoder = msg_ios(command_buffer, "computeCommandEncoder", restype=objc_instance)
+    msg_ios(encoder, "setComputePipelineState:", self.pipeline_state)
+    for i,a in enumerate(bufs): msg_ios(encoder, "setBuffer:offset:atIndex:", a.buf, a.offset, i)
+    for i,a in enumerate(vals,start=len(bufs)): msg_ios(encoder, "setBytes:length:atIndex:", bytes(ctypes.c_int(a)), 4, i)
+    msg_ios(encoder, "dispatchThreadgroups:threadsPerThreadgroup:", global_size, local_size)
+    msg_ios(encoder, "endEncoding")
+    msg_ios(command_buffer, "commit")
     if wait:
       wait_check(command_buffer)
       return elapsed_time(command_buffer)
@@ -127,7 +221,7 @@ class MetalAllocator(LRUAllocator):
     super().__init__()
   def _alloc(self, size:int, options) -> MetalBuffer:
     # Buffer is explicitly released in _free() rather than garbage collected via reference count
-    ret = msg(self.device.device, "newBufferWithLength:options:", size, MTLResourceOptions.MTLResourceStorageModeShared, restype=objc_id)
+    ret = msg_ios(self.device.device, "newBufferWithLength:options:", size, MTLResourceOptions.MTLResourceStorageModeShared, restype=objc_id)
     if ret.value is None: raise MemoryError(f"Metal OOM while allocating {size=}")
     return MetalBuffer(ret, size)
   def _free(self, opaque:MetalBuffer, options): msg(opaque.buf, "release")
@@ -157,18 +251,29 @@ class MetalAllocator(LRUAllocator):
     ptr = msg(src.buf, "contents", restype=objc_id) # Shared memory, do not release here
     array = (ctypes.c_char * (src.offset + src.size)).from_address(ptr.value)
     return memoryview(array).cast("B")[src.offset:]
-  def copyin(self, dest:MetalBuffer, src:memoryview): self.as_buffer(dest)[:] = src
+  def copyin(self, dest:MetalBuffer, src:memoryview):
+    self.as_buffer(dest)[:] = src
+    #TODO CLEAN
+    formatted_bytes = [f"0x{byte:02x}" for byte in src.tobytes()]
+    formatted_bytes = ("{"+ ", ".join(formatted_bytes)+ "}")
+    file = open("metaltiny/f.m", "a")  # append mode
+    file.write("memcpy(["+objc_name(dest.buf)+" contents], (uint8_t[])"+formatted_bytes+", "+str(src.nbytes)+");\n")
+    file.close()
   def copyout(self, dest:memoryview, src:MetalBuffer): dest[:] = self.as_buffer(src)
   def offset(self, buf:MetalBuffer, size:int, offset:int): return MetalBuffer(buf.buf, size, offset)
 
 class MetalDevice(Compiled):
   def __init__(self, device:str):
+    if os.path.exists("metaltiny/f.m"): os.remove("metaltiny/f.m")
     self.device = libmetal.MTLCreateSystemDefaultDevice()
-    self.mtl_queue = msg(self.device, "newCommandQueueWithMaxCommandBufferCount:", 1024, restype=objc_instance)
+    file = open("metaltiny/f.m","a")
+    file.write("id<MTLDevice> "+objc_name(self.device)+" = MTLCreateSystemDefaultDevice();\n")
+    file.close()
+    self.mtl_queue = msg_ios(self.device, "newCommandQueueWithMaxCommandBufferCount:", 1024, restype=objc_instance)
     if self.mtl_queue is None: raise RuntimeError("Cannot allocate a new command queue")
     self.mtl_buffers_in_flight: List[Any] = []
     self.mv_in_metal: List[memoryview] = []
-    self.timeline_signal = msg(self.device, "newSharedEvent", restype=objc_instance)
+    self.timeline_signal = msg_ios(self.device, "newSharedEvent", restype=objc_instance)
     self.timeline_value = 0
 
     from tinygrad.runtime.graph.metal import MetalGraph

@@ -6,7 +6,7 @@ from tinygrad.device import Buffer
 from tinygrad.engine.realize import ExecItem, CompiledRunner
 from tinygrad.engine.jit import GraphRunner, GraphException
 from tinygrad.ops import Variable
-from tinygrad.runtime.ops_metal import wait_check, msg, libobjc, to_struct, objc_instance,\
+from tinygrad.runtime.ops_metal import wait_check, msg, msg_ios, libobjc, to_struct, objc_instance,\
   MTLResourceOptions, elapsed_time, objc_id
 
 class MTLIndirectCommandType:
@@ -22,13 +22,13 @@ class MetalGraph(GraphRunner):
     if not all(isinstance(ji.prg, CompiledRunner) for ji in jit_cache): raise GraphException
 
     # create metal batch exec
-    icb_descriptor = msg(libobjc.objc_getClass(b"MTLIndirectCommandBufferDescriptor"), "new", restype=objc_instance)
-    msg(icb_descriptor, "setCommandTypes:", MTLIndirectCommandType.MTLIndirectCommandTypeConcurrentDispatch)
-    msg(icb_descriptor, "setInheritBuffers:", False)
-    msg(icb_descriptor, "setInheritPipelineState:", False)
-    msg(icb_descriptor, "setMaxKernelBufferBindCount:", 31)
+    icb_descriptor = msg_ios(b"MTLIndirectCommandBufferDescriptor", "new", restype=objc_instance)
+    msg_ios(icb_descriptor, "setCommandTypes:", MTLIndirectCommandType.MTLIndirectCommandTypeConcurrentDispatch)
+    msg_ios(icb_descriptor, "setInheritBuffers:", False)
+    msg_ios(icb_descriptor, "setInheritPipelineState:", False)
+    msg_ios(icb_descriptor, "setMaxKernelBufferBindCount:", 31)
 
-    self.icb = msg(self.device.device, "newIndirectCommandBufferWithDescriptor:maxCommandCount:options:",
+    self.icb = msg_ios(self.device.device, "newIndirectCommandBufferWithDescriptor:maxCommandCount:options:",
       icb_descriptor, len(self.jit_cache), MTLResourceOptions.MTLResourceCPUCacheModeDefaultCache, restype=objc_instance)
     if self.icb.value is None: raise GraphException("create indirect command buffer failed, does your system support this?")
     icb_label = bytes(msg(msg(self.icb, "description", restype=objc_instance), "UTF8String", restype=ctypes.c_char_p)).decode()
@@ -39,24 +39,24 @@ class MetalGraph(GraphRunner):
     all_pipelines = []
     for j,ji in enumerate(self.jit_cache):
       prg: CompiledRunner = cast(CompiledRunner, ji.prg)
-      icb_command = msg(self.icb, "indirectComputeCommandAtIndex:", j, restype=objc_instance)
+      icb_command = msg_ios(self.icb, "indirectComputeCommandAtIndex:", j, restype=objc_instance)
       all_pipelines.append(prg.clprg.pipeline_state)
-      msg(icb_command, "setComputePipelineState:", prg.clprg.pipeline_state)
+      msg_ios(icb_command, "setComputePipelineState:", prg.clprg.pipeline_state)
       for i,b in enumerate(ji.bufs):
         if b is not None and b not in input_rawbuffers:
-          msg(icb_command, "setKernelBuffer:offset:atIndex:", b._buf.buf, b._buf.offset, i)
+          msg_ios(icb_command, "setKernelBuffer:offset:atIndex:", b._buf.buf, b._buf.offset, i)
           all_resources.append(b._buf.buf)
       for i,v in enumerate(prg.p.vars): msg(icb_command, "setKernelBuffer:offset:atIndex:", self.int_buf.buf, self.vars.index(v)*4, len(ji.bufs)+i)
 
       global_size, local_size = prg.p.launch_dims(var_vals)
-      msg(icb_command, "concurrentDispatchThreadgroups:threadsPerThreadgroup:", to_struct(*global_size), to_struct(*local_size))
-      msg(icb_command, "setBarrier")
+      msg_ios(icb_command, "concurrentDispatchThreadgroups:threadsPerThreadgroup:", tuple(global_size), tuple(local_size))
+      msg_ios(icb_command, "setBarrier")
 
     self.all_resources = dedup(all_resources)
     self.all_pipelines = dedup(all_pipelines)
     self.command_buffer: Any = None
     if len(self.vars): self.int_buf_view = self.device.allocator.as_buffer(self.int_buf).cast('i')
-    self.range = to_struct(0, len(self.jit_cache))
+    self.range = tuple([0, len(self.jit_cache)])
 
   def __call__(self, input_rawbuffers: List[Buffer], var_vals: Dict[Variable, int], wait=False) -> Optional[float]:
 
@@ -71,15 +71,15 @@ class MetalGraph(GraphRunner):
     for j, global_dims, local_dims in self.updated_launch_dims(var_vals):
       prg = cast(CompiledRunner, self.jit_cache[j].prg)
       global_size, local_size = global_dims or prg.p.global_size, local_dims or prg.p.local_size
-      computeCommand = msg(self.icb, "indirectComputeCommandAtIndex:", j)
-      msg(computeCommand, "concurrentDispatchThreadgroups:threadsPerThreadgroup:",
-                  to_struct(*cast(tuple, global_size)), to_struct(*cast(tuple, local_size)))
+      computeCommand = msg_ios(self.icb, "indirectComputeCommandAtIndex:", j,restype=objc_id)
+      msg_ios(computeCommand, "concurrentDispatchThreadgroups:threadsPerThreadgroup:",
+                  tuple(global_size), tuple(local_size))
     for j, var in enumerate(self.vars): self.int_buf_view[j] = var_vals[var]
 
-    command_buffer = msg(self.device.mtl_queue, "commandBuffer", restype=objc_instance)
-    encoder = msg(command_buffer, "computeCommandEncoder", restype=objc_instance)
-    msg(encoder, "useResources:count:usage:", (objc_id * len(all_resources))(*all_resources), len(all_resources),
-        MTLResourceUsage.MTLResourceUsageRead | MTLResourceUsage.MTLResourceUsageWrite)
+    command_buffer = msg_ios(self.device.mtl_queue, "commandBuffer", restype=objc_instance)
+    encoder = msg_ios(command_buffer, "computeCommandEncoder", restype=objc_instance)
+    msg_ios(encoder, "useResources:count:usage:", all_resources, len(all_resources),
+      MTLResourceUsage.MTLResourceUsageRead | MTLResourceUsage.MTLResourceUsageWrite)
 
     # NOTE: the pipelines likely need to be added to the used resources to fix the crash on M1/M2, but I haven't figured out how
     # this is a O(n) hack to get them used. what should work is:
@@ -91,9 +91,9 @@ class MetalGraph(GraphRunner):
         msg(encoder, "setComputePipelineState:", ps)
         msg(encoder, "dispatchThreadgroups:threadsPerThreadgroup:", to_struct(0,0,0), to_struct(0,0,0))
 
-    msg(encoder, "executeCommandsInBuffer:withRange:", self.icb, self.range)
-    msg(encoder, "endEncoding")
-    msg(command_buffer, "commit")
+    msg_ios(encoder, "executeCommandsInBuffer:withRange:", self.icb, self.range)
+    msg_ios(encoder, "endEncoding")
+    msg_ios(command_buffer, "commit")
     self.command_buffer = command_buffer
 
     if wait:

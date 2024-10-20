@@ -116,6 +116,18 @@ class BufferCopy(Runner):
     else: name = f"{type(self).__name__[6:].lower()} {total_sz:8d}, {dest_device[:7]:>7s} <- {src_device[:7]:7s}"
     super().__init__(colored(name, "yellow"), dest_device, 0, total_sz)
   def copy(self, dest, src):
+    if src.device.startswith("DISK") and dest.device == "METAL": #TODO move
+      file_name = src.device[::-1]
+      file_name = file_name[:file_name.index("/")]
+      file_name = file_name[::-1]
+      buf_name = str(dest._buf.buf)
+      buf_name = buf_name[buf_name.index("0x")+1:buf_name.index(">")] + "_0" #TODO
+      file = open("metaltiny/f.m", "a")
+      #TODO clean
+      if file_name not in open("metaltiny/f.m").read(): file.write("NSData *f"+file_name+" = [NSData dataWithContentsOfURL:\
+[[NSBundle mainBundle] URLForResource:@\""+file_name+"\" withExtension:nil]];\n")
+      file.write("memcpy(["+buf_name+" contents] + "+str(dest.offset)+", [f"+file_name+" bytes] + "+str(src.offset)+", "+str(src.nbytes)+");\n")
+      file.close()
     disk_supports_fast_copyout = src.device.startswith("DISK") and hasattr(src.allocator.device, 'io_uring') and \
       getattr(src.allocator.device, 'fd', None) is not None
     if src.device.startswith("DISK") and hasattr(dest.allocator, 'copy_from_disk') and disk_supports_fast_copyout and src.nbytes >= 4096:

@@ -123,14 +123,11 @@ class BufferCopy(Runner):
       file_name = file_name[::-1]
       buf_name = str(dest._buf.buf)
       buf_name = buf_name[buf_name.index("0x")+1:buf_name.index(">")] + "_0" #TODO
-      file = open("metaltiny/f.m", "a")
       #TODO clean
       line = ""
-      if file_name not in open("metaltiny/f.m").read(): line += "NSData *f"+file_name+" = [NSData dataWithContentsOfURL:\
+      if file_name not in open("tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m").read(): line += "NSData *f"+file_name+" = [NSData dataWithContentsOfURL:\
 [[NSBundle mainBundle] URLForResource:@\""+file_name+"\" withExtension:nil]];\n"
       line += "memcpy(["+buf_name+" contents] + "+str(dest.offset)+", [f"+file_name+" bytes] + "+str(src.offset)+", "+str(src.nbytes)+");"
-      file.write(line + "\n")
-      file.close()
       add_to_objc(line)
     disk_supports_fast_copyout = src.device.startswith("DISK") and hasattr(src.allocator.device, 'io_uring') and \
       getattr(src.allocator.device, 'fd', None) is not None

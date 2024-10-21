@@ -162,7 +162,7 @@ class MetalCompiler(Compiler):
       air = subprocess.check_output(['xcrun', '-sdk', 'macosx', 'metal', '-x', 'metal', '-c', '-', '-o', '-'], input=src.encode('utf-8'))
       return subprocess.check_output(['xcrun', '-sdk', 'macosx', 'metallib', '-', '-o', '-'], input=air)
     options = msg(libobjc.objc_getClass(b"MTLCompileOptions"), "new", restype=objc_instance)
-    msg_ios(options, "setFastMathEnabled:", getenv("METAL_FAST_MATH"))
+    msg(options, "setFastMathEnabled:", getenv("METAL_FAST_MATH"))
     compileError = objc_instance()
     library = msg(self.device.device, "newLibraryWithSource:options:error:", to_ns_str(src),
                   options, ctypes.byref(compileError), restype=objc_instance)
@@ -202,7 +202,6 @@ class MetalProgram:
       exec_width = msg(self.pipeline_state, "threadExecutionWidth", restype=ctypes.c_ulong)
       memory_length = msg(self.pipeline_state, "staticThreadgroupMemoryLength", restype=ctypes.c_ulong)
       raise RuntimeError(f"local size {local_size} bigger than {max_total_threads} with exec width {exec_width} memory length {memory_length}")
-    command_buffer = msg(self.device.mtl_queue, "commandBuffer", restype=objc_instance)
     command_buffer = msg_ios(self.device.mtl_queue, "commandBuffer", restype=objc_instance)
     encoder = msg_ios(command_buffer, "computeCommandEncoder", restype=objc_instance)
     msg_ios(encoder, "setComputePipelineState:", self.pipeline_state)
@@ -266,7 +265,10 @@ class MetalAllocator(LRUAllocator):
 class MetalDevice(Compiled):
   def __init__(self, device:str):
     self.device = libmetal.MTLCreateSystemDefaultDevice()
-    if IOS>0: add_to_objc("id<MTLDevice> "+objc_name(self.device)+" = MTLCreateSystemDefaultDevice();")
+    if IOS>0:
+      with open('tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m', 'w') as dest,\
+      open('tinygrad-objc-ios/tinygrad-objc-ios/templateViewController.m', 'r') as src: dest.write(src.read())
+      add_to_objc("id<MTLDevice> "+objc_name(self.device)+" = MTLCreateSystemDefaultDevice();")
     self.mtl_queue = msg_ios(self.device, "newCommandQueueWithMaxCommandBufferCount:", 1024, restype=objc_instance)
     if self.mtl_queue is None: raise RuntimeError("Cannot allocate a new command queue")
     self.mtl_buffers_in_flight: List[Any] = []

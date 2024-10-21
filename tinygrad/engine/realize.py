@@ -8,6 +8,7 @@ from tinygrad.device import Device, Buffer
 from tinygrad.renderer import Renderer, Program
 from tinygrad.codegen.kernel import Kernel
 from tinygrad.engine.schedule import ScheduleItem
+from tinygrad.runtime.ops_metal import add_to_objc #TODO remove
 
 # **************** Program Creation ****************
 
@@ -124,10 +125,13 @@ class BufferCopy(Runner):
       buf_name = buf_name[buf_name.index("0x")+1:buf_name.index(">")] + "_0" #TODO
       file = open("metaltiny/f.m", "a")
       #TODO clean
-      if file_name not in open("metaltiny/f.m").read(): file.write("NSData *f"+file_name+" = [NSData dataWithContentsOfURL:\
-[[NSBundle mainBundle] URLForResource:@\""+file_name+"\" withExtension:nil]];\n")
-      file.write("memcpy(["+buf_name+" contents] + "+str(dest.offset)+", [f"+file_name+" bytes] + "+str(src.offset)+", "+str(src.nbytes)+");\n")
+      line = ""
+      if file_name not in open("metaltiny/f.m").read(): line += "NSData *f"+file_name+" = [NSData dataWithContentsOfURL:\
+[[NSBundle mainBundle] URLForResource:@\""+file_name+"\" withExtension:nil]];\n"
+      line += "memcpy(["+buf_name+" contents] + "+str(dest.offset)+", [f"+file_name+" bytes] + "+str(src.offset)+", "+str(src.nbytes)+");"
+      file.write(line + "\n")
       file.close()
+      add_to_objc(line)
     disk_supports_fast_copyout = src.device.startswith("DISK") and hasattr(src.allocator.device, 'io_uring') and \
       getattr(src.allocator.device, 'fd', None) is not None
     if src.device.startswith("DISK") and hasattr(dest.allocator, 'copy_from_disk') and disk_supports_fast_copyout and src.nbytes >= 4096:

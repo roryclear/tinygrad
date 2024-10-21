@@ -64,6 +64,17 @@ objc_types = {"newCommandQueueWithMaxCommandBufferCount:":"id<MTLCommandQueue> "
 
 quotes = {"stringWithUTF8String","setBytes"}
 
+def add_to_objc(line):
+  with open("tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m", "r") as file:
+    lines = file.readlines()
+    for i,l in enumerate(lines):
+      if "//END" in l:
+        lines.insert(i, line + "\n")
+        with open("tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m", "w") as file:
+          file.writelines(lines)
+          break
+
+
 T = TypeVar("T")
 # Ignore mypy error reporting incompatible default, because typevar default only works on python 3.12
 def msg(ptr: objc_id, selector: str, /, *args: Any, restype: type[T] = objc_id) -> T: # type: ignore [assignment]
@@ -90,8 +101,10 @@ def msg_ios(ptr: objc_id, selector: str, /, *args: Any, restype: type[T] = None)
     ret = sender(ptr, sel(selector), *args_copy)
   if selector == "new":
     file = open("metaltiny/f.m","a")
-    file.write(objc_name(ptr) + " *"+objc_name(ret,og=False)+" = ["+objc_name(ptr)+" new];\n")
+    line = objc_name(ptr) + " *"+objc_name(ret,og=False)+" = ["+objc_name(ptr)+" new];"
+    file.write(line + "\n")
     file.close()
+    add_to_objc(line)
     return ret
 
   line = ""
@@ -120,6 +133,7 @@ def msg_ios(ptr: objc_id, selector: str, /, *args: Any, restype: type[T] = None)
   file = open("metaltiny/f.m","a")
   file.write(line + "\n")
   file.close()
+  add_to_objc(line)
   return ret
 
 def to_ns_str(s: str): return msg(libobjc.objc_getClass(b"NSString"), "stringWithUTF8String:", s.encode(), restype=objc_instance)
@@ -180,8 +194,10 @@ class MetalProgram:
     self.fxn = msg(self.library, "newFunctionWithName:", to_ns_str(name), restype=objc_instance)
     file = open("metaltiny/f.m","a") #TODO use data instead of file
     #file.write("id<MTLLibrary> "+objc_name(self.library)+" = ["+objc_name(self.device.device)+" newDefaultLibrary];\n")
-    file.write("id<MTLFunction> "+objc_name(self.fxn,og=False)+" = [library newFunctionWithName: @\""+name+"\" ];\n")
+    line = "id<MTLFunction> "+objc_name(self.fxn,og=False)+" = [library newFunctionWithName: @\""+name+"\" ];"
+    file.write(line + "\n")
     file.close()
+    add_to_objc(line)
     error_check(error_library_creation)
     descriptor = msg_ios(b"MTLComputePipelineDescriptor", "new", restype=objc_instance)
     msg_ios(descriptor, "setComputeFunction:", self.fxn)
@@ -256,8 +272,10 @@ class MetalAllocator(LRUAllocator):
     formatted_bytes = [f"0x{byte:02x}" for byte in src.tobytes()]
     formatted_bytes = ("{"+ ", ".join(formatted_bytes)+ "}")
     file = open("metaltiny/f.m", "a")  # append mode
-    file.write("memcpy(["+objc_name(dest.buf)+" contents], (uint8_t[])"+formatted_bytes+", "+str(src.nbytes)+");\n")
+    line = "memcpy(["+objc_name(dest.buf)+" contents], (uint8_t[])"+formatted_bytes+", "+str(src.nbytes)+");"
+    file.write(line + "\n")
     file.close()
+    add_to_objc(line)
   def copyout(self, dest:memoryview, src:MetalBuffer): dest[:] = self.as_buffer(src)
   def offset(self, buf:MetalBuffer, size:int, offset:int): return MetalBuffer(buf.buf, size, offset)
 
@@ -266,8 +284,10 @@ class MetalDevice(Compiled):
     if os.path.exists("metaltiny/f.m"): os.remove("metaltiny/f.m")
     self.device = libmetal.MTLCreateSystemDefaultDevice()
     file = open("metaltiny/f.m","a")
-    file.write("id<MTLDevice> "+objc_name(self.device)+" = MTLCreateSystemDefaultDevice();\n")
+    line = "id<MTLDevice> "+objc_name(self.device)+" = MTLCreateSystemDefaultDevice();"
+    file.write(line + "\n")
     file.close()
+    add_to_objc(line)
     self.mtl_queue = msg_ios(self.device, "newCommandQueueWithMaxCommandBufferCount:", 1024, restype=objc_instance)
     if self.mtl_queue is None: raise RuntimeError("Cannot allocate a new command queue")
     self.mtl_buffers_in_flight: List[Any] = []

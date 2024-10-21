@@ -142,12 +142,11 @@ def error_check(error: objc_instance, error_constructor: type[Exception] = Runti
 
 class MetalCompiler(Compiler):
   def __init__(self, device:Optional[MetalDevice]):
-    if os.path.exists("metaltiny/f.metal"):
-      os.remove("metaltiny/f.metal")
+    if os.path.exists("tinygrad-objc-ios/f.metal"): os.remove("tinygrad-objc-ios/f.metal")
     self.device = device
     super().__init__("compile_metal")
   def compile(self, src:str) -> bytes:
-    file = open("metaltiny/f.metal", "a")
+    file = open("tinygrad-objc-ios/f.metal", "a")
     file.write(src+"\n")
     file.close()
     if self.device is None:

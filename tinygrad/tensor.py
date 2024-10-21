@@ -269,6 +269,7 @@ class Tensor:
     return buf.as_buffer(allow_zero_copy=True if self.device != "CLANG" else False)
 
   def data(self) -> memoryview:
+    exit()
     """
     Returns the data of this tensor as a memoryview.
 

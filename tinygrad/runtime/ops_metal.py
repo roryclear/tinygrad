@@ -1,7 +1,7 @@
 from __future__ import annotations
 import os, subprocess, pathlib, ctypes, tempfile, functools
 from typing import List, Any, Tuple, Optional, cast, TypeVar
-from tinygrad.helpers import prod, getenv, DEBUG
+from tinygrad.helpers import prod, getenv, DEBUG, IOS
 from tinygrad.device import Compiled, Compiler, CompileError, LRUAllocator
 from tinygrad.renderer.cstyle import MetalRenderer
 
@@ -100,8 +100,9 @@ def msg_ios(ptr: objc_id, selector: str, /, *args: Any, restype: type[T] = None)
   else:
     ret = sender(ptr, sel(selector), *args_copy)
   if selector == "new":
-    add_to_objc(objc_name(ptr) + " *"+objc_name(ret,og=False)+" = ["+objc_name(ptr)+" new];")
+    if IOS>0: add_to_objc(objc_name(ptr) + " *"+objc_name(ret,og=False)+" = ["+objc_name(ptr)+" new];")
     return ret
+  if IOS<1: return ret
 
   line = ""
   selector_in = selector
@@ -185,7 +186,7 @@ class MetalProgram:
     self.library = msg(self.device.device, "newLibraryWithData:error:", data, ctypes.byref(error_library_creation), restype=objc_instance)
     error_check(error_library_creation)
     self.fxn = msg(self.library, "newFunctionWithName:", to_ns_str(name), restype=objc_instance)
-    add_to_objc("id<MTLFunction> "+objc_name(self.fxn,og=False)+" = [library newFunctionWithName: @\""+name+"\" ];")
+    if IOS>0: add_to_objc("id<MTLFunction> "+objc_name(self.fxn,og=False)+" = [library newFunctionWithName: @\""+name+"\" ];")
     error_check(error_library_creation)
     descriptor = msg_ios(b"MTLComputePipelineDescriptor", "new", restype=objc_instance)
     msg_ios(descriptor, "setComputeFunction:", self.fxn)
@@ -256,17 +257,16 @@ class MetalAllocator(LRUAllocator):
     return memoryview(array).cast("B")[src.offset:]
   def copyin(self, dest:MetalBuffer, src:memoryview):
     self.as_buffer(dest)[:] = src
-    #TODO CLEAN
-    formatted_bytes = [f"0x{byte:02x}" for byte in src.tobytes()]
-    formatted_bytes = ("{"+ ", ".join(formatted_bytes)+ "}")
-    add_to_objc("memcpy(["+objc_name(dest.buf)+" contents], (uint8_t[])"+formatted_bytes+", "+str(src.nbytes)+");")
+    if IOS>0:
+      formatted_bytes = ("{"+ ", ".join([f"0x{byte:02x}" for byte in src.tobytes()])+ "}")
+      add_to_objc("memcpy(["+objc_name(dest.buf)+" contents], (uint8_t[])"+formatted_bytes+", "+str(src.nbytes)+");")
   def copyout(self, dest:memoryview, src:MetalBuffer): dest[:] = self.as_buffer(src)
   def offset(self, buf:MetalBuffer, size:int, offset:int): return MetalBuffer(buf.buf, size, offset)
 
 class MetalDevice(Compiled):
   def __init__(self, device:str):
     self.device = libmetal.MTLCreateSystemDefaultDevice()
-    add_to_objc("id<MTLDevice> "+objc_name(self.device)+" = MTLCreateSystemDefaultDevice();")
+    if IOS>0: add_to_objc("id<MTLDevice> "+objc_name(self.device)+" = MTLCreateSystemDefaultDevice();")
     self.mtl_queue = msg_ios(self.device, "newCommandQueueWithMaxCommandBufferCount:", 1024, restype=objc_instance)
     if self.mtl_queue is None: raise RuntimeError("Cannot allocate a new command queue")
     self.mtl_buffers_in_flight: List[Any] = []

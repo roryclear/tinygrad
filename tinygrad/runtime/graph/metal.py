@@ -7,7 +7,7 @@ from tinygrad.engine.realize import ExecItem, CompiledRunner
 from tinygrad.engine.jit import GraphRunner, GraphException
 from tinygrad.ops import Variable
 from tinygrad.runtime.ops_metal import wait_check, msg, msg_ios, libobjc, to_struct, objc_instance,\
-  MTLResourceOptions, elapsed_time, objc_id
+  MTLResourceOptions, objc_id
 
 class MTLIndirectCommandType:
   MTLIndirectCommandTypeConcurrentDispatch = (1 << 5)
@@ -30,9 +30,6 @@ class MetalGraph(GraphRunner):
 
     self.icb = msg_ios(self.device.device, "newIndirectCommandBufferWithDescriptor:maxCommandCount:options:",
       icb_descriptor, len(self.jit_cache), MTLResourceOptions.MTLResourceCPUCacheModeDefaultCache, restype=objc_instance)
-    if self.icb.value is None: raise GraphException("create indirect command buffer failed, does your system support this?")
-    icb_label = bytes(msg(msg(self.icb, "description", restype=objc_instance), "UTF8String", restype=ctypes.c_char_p)).decode()
-    self.needs_icb_fix = int("AGXG15XFamilyIndirectCommandBuffer" not in icb_label)    # not required on M3
 
     if len(self.vars): self.int_buf = self.device.allocator.alloc(len(self.vars)*dtypes.int32.itemsize)
     all_resources = [self.int_buf.buf] if len(self.vars) else []
@@ -45,8 +42,6 @@ class MetalGraph(GraphRunner):
       for i,b in enumerate(ji.bufs):
         if b is not None and b not in input_rawbuffers:
           msg_ios(icb_command, "setKernelBuffer:offset:atIndex:", b._buf.buf, b._buf.offset, i)
-          all_resources.append(b._buf.buf)
-      for i,v in enumerate(prg.p.vars): msg(icb_command, "setKernelBuffer:offset:atIndex:", self.int_buf.buf, self.vars.index(v)*4, len(ji.bufs)+i)
 
       global_size, local_size = prg.p.launch_dims(var_vals)
       msg_ios(icb_command, "concurrentDispatchThreadgroups:threadsPerThreadgroup:", tuple(global_size), tuple(local_size))
@@ -63,11 +58,6 @@ class MetalGraph(GraphRunner):
     if self.command_buffer is not None and self.command_buffer in self.device.mtl_buffers_in_flight: wait_check(self.command_buffer)
     all_resources = dedup(self.all_resources + [x._buf.buf for x in input_rawbuffers])
 
-    for (j,i),input_idx in self.input_replace.items():
-      computeCommand = msg(self.icb, "indirectComputeCommandAtIndex:", j, restype=objc_id)
-      msg(computeCommand, "setKernelBuffer:offset:atIndex:", input_rawbuffers[input_idx]._buf.buf,
-                                                                                 input_rawbuffers[input_idx]._buf.offset, i)
-
     for j, global_dims, local_dims in self.updated_launch_dims(var_vals):
       prg = cast(CompiledRunner, self.jit_cache[j].prg)
       global_size, local_size = global_dims or prg.p.global_size, local_dims or prg.p.local_size
@@ -81,23 +71,7 @@ class MetalGraph(GraphRunner):
     msg_ios(encoder, "useResources:count:usage:", all_resources, len(all_resources),
       MTLResourceUsage.MTLResourceUsageRead | MTLResourceUsage.MTLResourceUsageWrite)
 
-    # NOTE: the pipelines likely need to be added to the used resources to fix the crash on M1/M2, but I haven't figured out how
-    # this is a O(n) hack to get them used. what should work is:
-    #encoder.useResources_count_usage_(self.all_pipelines, len(self.all_pipelines), Metal.MTLResourceUsageRead)
-    # but it fails with "Invalid Resource (00000009:kIOGPUCommandBufferCallbackErrorInvalidResource)"
-    # to repro the crash (which can also crash other running GPU apps), run with FIX_METAL_ICB=0
-    if getenv("FIX_METAL_ICB", self.needs_icb_fix):
-      for ps in self.all_pipelines:
-        msg(encoder, "setComputePipelineState:", ps)
-        msg(encoder, "dispatchThreadgroups:threadsPerThreadgroup:", to_struct(0,0,0), to_struct(0,0,0))
-
     msg_ios(encoder, "executeCommandsInBuffer:withRange:", self.icb, self.range)
     msg_ios(encoder, "endEncoding")
     msg_ios(command_buffer, "commit")
-    self.command_buffer = command_buffer
-
-    if wait:
-      wait_check(command_buffer)
-      return elapsed_time(command_buffer)
-    self.device.mtl_buffers_in_flight.append(command_buffer)
     return None

@@ -10,7 +10,7 @@ class objc_id(ctypes.c_void_p): # This prevents ctypes from converting response 
   def __eq__(self, other): return self.value == other.value
 
 class objc_instance(objc_id): # method with name "new", "alloc" should be freed after use
-  def __del__(self): msg(self, "release")
+  def __del__(self): return
 
 @functools.lru_cache(None)
 def sel(name: str): return libobjc.sel_registerName(name.encode())
@@ -171,8 +171,6 @@ def msg_ios(ptr: objc_id, selector: str, /, *args: Any, restype: type[T] = None)
   add_to_objc(line)
   return ret
 
-def to_ns_str(s: str): return msg(libobjc.objc_getClass(b"NSString"), "stringWithUTF8String:", s.encode(), restype=objc_instance)
-
 def to_struct(*t: int, _type: type = ctypes.c_ulong):
   class Struct(ctypes.Structure): pass
   Struct._fields_ = [(f"field{i}", _type) for i in range(len(t))]
@@ -226,8 +224,7 @@ class MetalAllocator(LRUAllocator):
     super().__init__()
   def _alloc(self, size:int, options) -> MetalBuffer:
     # Buffer is explicitly released in _free() rather than garbage collected via reference count
-    ret = msg_ios(self.device.device, "newBufferWithLength:options:", size, MTLResourceOptions.MTLResourceStorageModeShared, restype=objc_id)
-    if ret.value is None: raise MemoryError(f"Metal OOM while allocating {size=}")
+    ret = msg_ios2(self.device.device, "newBufferWithLength:options:", size, MTLResourceOptions.MTLResourceStorageModeShared, restype=objc_id)
     return MetalBuffer(ret, size)
   def _free(self, opaque:MetalBuffer, options): return
   def transfer(self, dest:MetalBuffer, src:MetalBuffer, sz:int, src_dev:MetalDevice, dest_dev:MetalDevice): return
@@ -235,9 +232,7 @@ class MetalAllocator(LRUAllocator):
     return
   def as_buffer(self, src:MetalBuffer) -> memoryview:
     self.device.synchronize()
-    ptr = msg(src.buf, "contents", restype=objc_id) # Shared memory, do not release here
-    array = (ctypes.c_char * (src.offset + src.size)).from_address(ptr.value)
-    return memoryview(array).cast("B")[src.offset:]
+    assert False, "cannot copy from metal (IOS)"
   def copyin(self, dest:MetalBuffer, src:memoryview):
     if IOS>0:
       formatted_bytes = ("{"+ ", ".join([f"0x{byte:02x}" for byte in src.tobytes()])+ "}")

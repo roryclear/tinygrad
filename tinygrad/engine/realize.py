@@ -122,7 +122,6 @@ class BufferCopy(Runner):
       file_name = file_name[:file_name.index("/")]
       file_name = file_name[::-1]
       buf_name = str(dest._buf.buf)
-      buf_name = buf_name[buf_name.index("0x")+1:buf_name.index(">")] + "_0" #TODO
       #TODO clean
       if IOS>0:
         line = ""
@@ -130,15 +129,8 @@ class BufferCopy(Runner):
   [[NSBundle mainBundle] URLForResource:@\""+file_name+"\" withExtension:nil]];\n"
         line += "memcpy(["+buf_name+" contents] + "+str(dest.offset)+", [f"+file_name+" bytes] + "+str(src.offset)+", "+str(src.nbytes)+");"
         add_to_objc(line)
-    disk_supports_fast_copyout = src.device.startswith("DISK") and hasattr(src.allocator.device, 'io_uring') and \
-      getattr(src.allocator.device, 'fd', None) is not None
-    if src.device.startswith("DISK") and hasattr(dest.allocator, 'copy_from_disk') and disk_supports_fast_copyout and src.nbytes >= 4096:
-      dest.allocator.copy_from_disk(dest._buf, src._buf, src.nbytes)
-    elif src.device.startswith("DISK") and hasattr(dest.allocator, 'as_buffer'):
-      # fast(ish) path, uses readinto in diskbuffers
-      src.allocator.copyout(dest.allocator.as_buffer(dest._buf), src._buf)
-    else:
-      dest.copyin(src.as_buffer(allow_zero_copy=True))  # may allocate a CPU buffer depending on allow_zero_copy
+    if src.device.startswith("DISK") and hasattr(dest.allocator, 'as_buffer'): return
+    dest.copyin(src.as_buffer(allow_zero_copy=True))
   def __call__(self, rawbufs:List[Buffer], var_vals:Dict[Variable, int], wait=False):
     dest, src = rawbufs[0:2]
     assert dest.size == src.size and dest.dtype == src.dtype, f"buffer copy mismatch, {dest.size} != {src.size}, {dest.dtype} != {src.dtype}"

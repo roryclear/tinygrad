@@ -23,7 +23,7 @@ def objc_name(x,selector=None):
   if type(x) == tuple:
     if selector == "executeCommandsInBuffer:withRange:": return "NSMakeRange" + str(x)
     return "MTLSizeMake" + str(x)
-  return str(x).replace("b'", "").replace("'", "")
+  return str(x).replace("b", "").replace("'", "\"")
 
 objc_types = {"newCommandQueueWithMaxCommandBufferCount:":"id<MTLCommandQueue> ","newSharedEvent":"id<MTLSharedEvent> ",
               "stringWithUTF8String:":"NSString *","newBufferWithLength:options:":"id<MTLBuffer> ",
@@ -32,8 +32,6 @@ objc_types = {"newCommandQueueWithMaxCommandBufferCount:":"id<MTLCommandQueue> "
               "commandBuffer":"id<MTLCommandBuffer> ","computeCommandEncoder":"id<MTLComputeCommandEncoder> ",
               "newIndirectCommandBufferWithDescriptor:maxCommandCount:options:":"id<MTLIndirectCommandBuffer> ",
               "indirectComputeCommandAtIndex:":"id<MTLIndirectComputeCommand> "}
-
-quotes = {"stringWithUTF8String","setBytes"}
 
 def add_to_objc(line):
   with open("tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m", "r") as file:
@@ -57,29 +55,23 @@ def msg(ptr, selector: str, /, *args: Any, res=False):
     ret = new_var()
     add_to_objc(objc_name(ptr) + " *"+ret+" = ["+objc_name(ptr)+" new];")
     return ret
-
+  
   line = ""
   selector_in = selector
   if ":" in selector:
-    labels = [selector[:selector.index(":")]]
+    labels = selector.split(":")
+    selector = ""
   else:
     labels = [selector]
   if res:
     ret = new_var()
-    line +=  objc_types[selector] + ret + " = "
-  if ":" in selector:
-    selector = selector[selector.index(":")+1:]
-  while ":" in selector: #TODO
-    labels.append(selector[:selector.index(":")])
-    selector = selector[selector.index(":")+1:]
+    line +=  objc_types[selector_in] + ret + " = "
   line += "[" + objc_name(ptr) + " "
   for i,a in enumerate(labels):
     line += a
     if i < len(args):
       line += ": "
-      if a in quotes: line += "\""
       line += objc_name(args[i],selector=selector_in)
-      if a in quotes: line += "\""
       line += " "
   line += "];"
   add_to_objc(line)

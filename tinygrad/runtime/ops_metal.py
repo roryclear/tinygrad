@@ -21,13 +21,9 @@ def objc_name(x):
     return "MTLSizeMake" + str(x)
   return str(x).replace("b", "").replace("'", "\"") #bytes
 
-objc_types = {"newCommandQueueWithMaxCommandBufferCount:":"id<MTLCommandQueue> ","newSharedEvent":"id<MTLSharedEvent> ",
-              "stringWithUTF8String:":"NSString *","newBufferWithLength:options:":"id<MTLBuffer> ",
-              "contents":"void *","newLibraryWithData:error:":"id<MTLLibrary> ","newFunctionWithName:":"id<MTLFunction> ",
+objc_types = {"newCommandQueueWithMaxCommandBufferCount:":"id<MTLCommandQueue> ","newBufferWithLength:options:":"id<MTLBuffer> ",
               "newComputePipelineStateWithDescriptor:options:reflection:error:":"id<MTLComputePipelineState> ",
-              "commandBuffer":"id<MTLCommandBuffer> ","computeCommandEncoder":"id<MTLComputeCommandEncoder> ",
-              "newIndirectCommandBufferWithDescriptor:maxCommandCount:options:":"id<MTLIndirectCommandBuffer> ",
-              "indirectComputeCommandAtIndex:":"id<MTLIndirectComputeCommand> "}
+              "commandBuffer":"id<MTLCommandBuffer> ","computeCommandEncoder":"id<MTLComputeCommandEncoder> "}
 
 def add_to_objc(line):
   with open("tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m", "r") as file:
@@ -42,8 +38,7 @@ def add_to_objc(line):
 var_num = -1
 def new_var():
   global var_num
-  var_num+=1
-  return "v" + str(var_num)
+  return "v" + str(var_num:=var_num+1)
 
 def msg(ptr, selector: str, /, *args: Any, res=False):
   ret = None

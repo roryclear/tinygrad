@@ -106,6 +106,17 @@ class iosAllocator(LRUAllocator):
   def as_buffer(self, src:iosBuffer) -> memoryview:
     self.device.synchronize()
     assert False, "cannot copy from ios (iOS)"
+  def copy_from_disk(self,dest,src):
+    file_name = src.device[::-1]
+    file_name = file_name[:file_name.index("/")]
+    file_name = file_name[::-1]
+    buf_name = str(dest._buf.buf)
+    line = ""
+    if file_name not in open("tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m").read(): line += "NSData *f"+file_name+" = [NSData dataWithContentsOfURL:\
+[[NSBundle mainBundle] URLForResource:@\""+file_name+"\" withExtension:nil]];\n"
+    line += "memcpy(["+buf_name+" contents] + "+str(dest.offset)+", [f"+file_name+" bytes] + "+str(src.offset)+", "+str(src.nbytes)+");"
+    add_to_objc(line)
+
   def copyin(self, dest:iosBuffer, src:memoryview):
     formatted_bytes = ("{"+ ", ".join([f"0x{byte:02x}" for byte in src.tobytes()])+ "}")
     add_to_objc("memcpy(["+objc_name(dest.buf)+" contents], (uint8_t[])"+formatted_bytes+", "+str(src.nbytes)+");")

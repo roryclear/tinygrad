@@ -22,21 +22,21 @@ class MetalGraph(GraphRunner):
     if not all(isinstance(ji.prg, CompiledRunner) for ji in jit_cache): raise GraphException
 
     # create metal batch exec
-    icb_descriptor = msg(b"MTLIndirectCommandBufferDescriptor", "new", restype=objc_instance)
+    icb_descriptor = msg(b"MTLIndirectCommandBufferDescriptor", "new", res=True)
     msg(icb_descriptor, "setCommandTypes:", MTLIndirectCommandType.MTLIndirectCommandTypeConcurrentDispatch)
     msg(icb_descriptor, "setInheritBuffers:", False)
     msg(icb_descriptor, "setInheritPipelineState:", False)
     msg(icb_descriptor, "setMaxKernelBufferBindCount:", 31)
 
     self.icb = msg(self.device.device, "newIndirectCommandBufferWithDescriptor:maxCommandCount:options:",
-      icb_descriptor, len(self.jit_cache), MTLResourceOptions.MTLResourceCPUCacheModeDefaultCache, restype=objc_instance)
+      icb_descriptor, len(self.jit_cache), MTLResourceOptions.MTLResourceCPUCacheModeDefaultCache, res=True)
 
     if len(self.vars): self.int_buf = self.device.allocator.alloc(len(self.vars)*dtypes.int32.itemsize)
     all_resources = [self.int_buf.buf] if len(self.vars) else []
     all_pipelines = []
     for j,ji in enumerate(self.jit_cache):
       prg: CompiledRunner = cast(CompiledRunner, ji.prg)
-      icb_command = msg(self.icb, "indirectComputeCommandAtIndex:", j, restype=objc_instance)
+      icb_command = msg(self.icb, "indirectComputeCommandAtIndex:", j, res=True)
       all_pipelines.append(prg.clprg.pipeline_state)
       msg(icb_command, "setComputePipelineState:", prg.clprg.pipeline_state)
       for i,b in enumerate(ji.bufs):
@@ -61,13 +61,13 @@ class MetalGraph(GraphRunner):
     for j, global_dims, local_dims in self.updated_launch_dims(var_vals):
       prg = cast(CompiledRunner, self.jit_cache[j].prg)
       global_size, local_size = global_dims or prg.p.global_size, local_dims or prg.p.local_size
-      computeCommand = msg(self.icb, "indirectComputeCommandAtIndex:", j,restype=objc_id)
+      computeCommand = msg(self.icb, "indirectComputeCommandAtIndex:", j,res=True)
       msg(computeCommand, "concurrentDispatchThreadgroups:threadsPerThreadgroup:",
                   tuple(global_size), tuple(local_size))
     for j, var in enumerate(self.vars): self.int_buf_view[j] = var_vals[var]
 
-    command_buffer = msg(self.device.mtl_queue, "commandBuffer", restype=objc_instance)
-    encoder = msg(command_buffer, "computeCommandEncoder", restype=objc_instance)
+    command_buffer = msg(self.device.mtl_queue, "commandBuffer", res=True)
+    encoder = msg(command_buffer, "computeCommandEncoder", res=True)
     msg(encoder, "useResources:count:usage:", all_resources, len(all_resources),
       MTLResourceUsage.MTLResourceUsageRead | MTLResourceUsage.MTLResourceUsageWrite)
 

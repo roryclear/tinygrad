@@ -81,10 +81,7 @@ def new_var():
   var_num+=1
   return "v" + str(var_num)
 
-
-T = TypeVar("T")
-# Ignore mypy error reporting incompatible default, because typevar default only works on python 3.12
-def msg(ptr, selector: str, /, *args: Any, restype: type[T] = None) -> T: # type: ignore [assignment]
+def msg(ptr, selector: str, /, *args: Any, res=False):
   ret = new_var()
   if selector == "new":
     add_to_objc(objc_name(ptr) + " *"+ret+" = ["+objc_name(ptr)+" new];")
@@ -96,7 +93,7 @@ def msg(ptr, selector: str, /, *args: Any, restype: type[T] = None) -> T: # type
     labels = [selector[:selector.index(":")]]
   else:
     labels = [selector]
-  if restype != None:
+  if res:
     line +=  objc_types[selector] + ret + " = "
   if ":" in selector:
     selector = selector[selector.index(":")+1:]
@@ -143,15 +140,15 @@ class MetalProgram:
     self.device, self.name, self.lib = device, name, lib
     self.fxn = new_var()
     if IOS>0: add_to_objc("id<MTLFunction> "+self.fxn+" = [library newFunctionWithName: @\""+name+"\" ];")
-    descriptor = msg(b"MTLComputePipelineDescriptor", "new", restype=objc_instance)
+    descriptor = msg(b"MTLComputePipelineDescriptor", "new", res=True)
     msg(descriptor, "setComputeFunction:", self.fxn)
     msg(descriptor, "setSupportIndirectCommandBuffers:", True)
     self.pipeline_state = msg(self.device.device, "newComputePipelineStateWithDescriptor:options:reflection:error:",
-      descriptor, MTLPipelineOption.MTLPipelineOptionNone, None, ctypes.byref(objc_instance()), restype=objc_instance)
+      descriptor, MTLPipelineOption.MTLPipelineOptionNone, None, ctypes.byref(objc_instance()), res=True)
 
   def __call__(self, *bufs, global_size:Tuple[int,int,int]=(1,1,1), local_size:Tuple[int,int,int]=(1,1,1), vals:Tuple[int, ...]=(), wait=False):
-    command_buffer = msg(self.device.mtl_queue, "commandBuffer", restype=objc_instance)
-    encoder = msg(command_buffer, "computeCommandEncoder", restype=objc_instance)
+    command_buffer = msg(self.device.mtl_queue, "commandBuffer", res=True)
+    encoder = msg(command_buffer, "computeCommandEncoder", res=True)
     msg(encoder, "setComputePipelineState:", self.pipeline_state)
     for i,a in enumerate(bufs): msg(encoder, "setBuffer:offset:atIndex:", a.buf, a.offset, i)
     for i,a in enumerate(vals,start=len(bufs)): msg(encoder, "setBytes:length:atIndex:", bytes(ctypes.c_int(a)), 4, i)
@@ -169,7 +166,7 @@ class MetalAllocator(LRUAllocator):
     super().__init__()
   def _alloc(self, size:int, options) -> MetalBuffer:
     # Buffer is explicitly released in _free() rather than garbage collected via reference count
-    ret = msg(self.device.device, "newBufferWithLength:options:", size, MTLResourceOptions.MTLResourceStorageModeShared, restype=objc_id)
+    ret = msg(self.device.device, "newBufferWithLength:options:", size, MTLResourceOptions.MTLResourceStorageModeShared, res=True)
     return MetalBuffer(ret, size)
   def _free(self, opaque:MetalBuffer, options): return
   def transfer(self, dest:MetalBuffer, src:MetalBuffer, sz:int, src_dev:MetalDevice, dest_dev:MetalDevice): return
@@ -191,7 +188,7 @@ class MetalDevice(Compiled):
       with open('tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m', 'w') as dest,\
       open('tinygrad-objc-ios/tinygrad-objc-ios/templateViewController.m', 'r') as src: dest.write(src.read())
       add_to_objc("id<MTLDevice> "+objc_name(self.device)+" = MTLCreateSystemDefaultDevice();")
-    self.mtl_queue = msg(self.device, "newCommandQueueWithMaxCommandBufferCount:", 1024, restype=objc_instance)
+    self.mtl_queue = msg(self.device, "newCommandQueueWithMaxCommandBufferCount:", 1024, res=True)
     self.mtl_buffers_in_flight: List[Any] = []
 
     from tinygrad.runtime.graph.metal import MetalGraph

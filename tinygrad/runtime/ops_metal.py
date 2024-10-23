@@ -34,7 +34,8 @@ libdispatch.dispatch_data_create.restype = objc_instance
 
 objc_names = {}
 def objc_name(x,selector=None,og=True):
-  if type(x) == str: return x # should always use this!
+  if type(x) == str: return x
+  if type(x) == int: return str(x)
   if type(x) == list:
     return ("(id<MTLResource> []){"+str([objc_name(i) for i in x])[1:-1]+"}").replace("'","")
   if type(x) == tuple:
@@ -44,16 +45,11 @@ def objc_name(x,selector=None,og=True):
   if x_s == "True": return "true"
   if x_s == "False": return "false"
   if ")" in x_s: return "&error"
-  if "0x" not in x_s: 
+  if "0x" not in x_s:
     ret = x_s.replace("b'", "").replace("'", "")
     if ret == "None": return "Nil"
     return ret
-  ret = x_s[x_s.index("0x")+1:x_s.index(">")]
-  if ret in objc_names:
-    if og == False: objc_names[ret] += 1
-  else:
-    objc_names[ret] = 0
-  return ret + "_" + str(objc_names[ret])
+  return x_s[x_s.index("0x")+1:x_s.index(">")]
 
 objc_types = {"newCommandQueueWithMaxCommandBufferCount:":"id<MTLCommandQueue> ","newSharedEvent":"id<MTLSharedEvent> ",
               "stringWithUTF8String:":"NSString *","newBufferWithLength:options:":"id<MTLBuffer> ",
@@ -140,7 +136,7 @@ class MetalProgram:
     self.device, self.name, self.lib = device, name, lib
     self.fxn = new_var()
     if IOS>0: add_to_objc("id<MTLFunction> "+self.fxn+" = [library newFunctionWithName: @\""+name+"\" ];")
-    descriptor = msg(b"MTLComputePipelineDescriptor", "new", res=True)
+    descriptor = msg("MTLComputePipelineDescriptor", "new", res=True)
     msg(descriptor, "setComputeFunction:", self.fxn)
     msg(descriptor, "setSupportIndirectCommandBuffers:", True)
     self.pipeline_state = msg(self.device.device, "newComputePipelineStateWithDescriptor:options:reflection:error:",

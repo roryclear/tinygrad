@@ -32,8 +32,8 @@ libobjc.sel_registerName.restype = objc_id
 libmetal.MTLCreateSystemDefaultDevice.restype = objc_instance
 libdispatch.dispatch_data_create.restype = objc_instance
 
-objc_names = {}
-def objc_name(x,selector=None,og=True):
+def objc_name(x,selector=None):
+  if x == None: return "Nil"
   if type(x) == str: return x
   if type(x) == int: return str(x)
   if type(x) == list:
@@ -45,11 +45,7 @@ def objc_name(x,selector=None,og=True):
   if x_s == "True": return "true"
   if x_s == "False": return "false"
   if ")" in x_s: return "&error"
-  if "0x" not in x_s:
-    ret = x_s.replace("b'", "").replace("'", "")
-    if ret == "None": return "Nil"
-    return ret
-  return x_s[x_s.index("0x")+1:x_s.index(">")]
+  return x_s.replace("b'", "").replace("'", "")
 
 objc_types = {"newCommandQueueWithMaxCommandBufferCount:":"id<MTLCommandQueue> ","newSharedEvent":"id<MTLSharedEvent> ",
               "stringWithUTF8String:":"NSString *","newBufferWithLength:options:":"id<MTLBuffer> ",
@@ -78,8 +74,9 @@ def new_var():
   return "v" + str(var_num)
 
 def msg(ptr, selector: str, /, *args: Any, res=False):
-  ret = new_var()
+  ret = None
   if selector == "new":
+    ret = new_var()
     add_to_objc(objc_name(ptr) + " *"+ret+" = ["+objc_name(ptr)+" new];")
     return ret
 
@@ -90,6 +87,7 @@ def msg(ptr, selector: str, /, *args: Any, res=False):
   else:
     labels = [selector]
   if res:
+    ret = new_var()
     line +=  objc_types[selector] + ret + " = "
   if ":" in selector:
     selector = selector[selector.index(":")+1:]
@@ -179,7 +177,7 @@ class MetalAllocator(LRUAllocator):
 
 class MetalDevice(Compiled):
   def __init__(self, device:str):
-    self.device = libmetal.MTLCreateSystemDefaultDevice()
+    self.device = new_var()
     if IOS>0:
       with open('tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m', 'w') as dest,\
       open('tinygrad-objc-ios/tinygrad-objc-ios/templateViewController.m', 'r') as src: dest.write(src.read())

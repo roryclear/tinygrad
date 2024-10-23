@@ -1,8 +1,8 @@
 from __future__ import annotations
-import os, subprocess, pathlib, ctypes, tempfile, functools
-from typing import List, Any, Tuple, Optional, cast, TypeVar
-from tinygrad.helpers import prod, getenv, DEBUG
-from tinygrad.device import Compiled, Compiler, CompileError, LRUAllocator
+import os, ctypes, functools
+from typing import List, Any, Tuple, Optional
+from tinygrad.helpers import getenv
+from tinygrad.device import Compiled, Compiler, LRUAllocator
 from tinygrad.renderer.cstyle import MetalRenderer
 
 class MTLResourceOptions:
@@ -12,18 +12,14 @@ class MTLResourceOptions:
 class MTLPipelineOption:
   MTLPipelineOptionNone = 0
 
-
-def objc_name(x,selector=None):
+def objc_name(x):
   if x == None: return "Nil"
   if type(x) == bool: return str(x).lower()
   if type(x) == str: return x
   if type(x) == int: return str(x)
-  if type(x) == list:
-    return ("(id<MTLResource> []){"+str([objc_name(i) for i in x])[1:-1]+"}").replace("'","")
   if type(x) == tuple:
-    if selector == "executeCommandsInBuffer:withRange:": return "NSMakeRange" + str(x)
     return "MTLSizeMake" + str(x)
-  return str(x).replace("b", "").replace("'", "\"")
+  return str(x).replace("b", "").replace("'", "\"") #bytes
 
 objc_types = {"newCommandQueueWithMaxCommandBufferCount:":"id<MTLCommandQueue> ","newSharedEvent":"id<MTLSharedEvent> ",
               "stringWithUTF8String:":"NSString *","newBufferWithLength:options:":"id<MTLBuffer> ",
@@ -57,22 +53,16 @@ def msg(ptr, selector: str, /, *args: Any, res=False):
     return ret
   
   line = ""
-  selector_in = selector
   if ":" in selector:
     labels = selector.split(":")
-    selector = ""
   else:
     labels = [selector]
   if res:
-    ret = new_var()
-    line +=  objc_types[selector_in] + ret + " = "
+    line += objc_types[selector] + (ret := new_var()) + " = "
   line += "[" + objc_name(ptr) + " "
   for i,a in enumerate(labels):
     line += a
-    if i < len(args):
-      line += ": "
-      line += objc_name(args[i],selector=selector_in)
-      line += " "
+    if i < len(args): line += ": " + objc_name(args[i]) + " "
   line += "];"
   add_to_objc(line)
   return ret
@@ -121,7 +111,6 @@ class MetalAllocator(LRUAllocator):
     self.device:MetalDevice = device
     super().__init__()
   def _alloc(self, size:int, options) -> MetalBuffer:
-    # Buffer is explicitly released in _free() rather than garbage collected via reference count
     ret = msg(self.device.device, "newBufferWithLength:options:", size, MTLResourceOptions.MTLResourceStorageModeShared, res=True)
     return MetalBuffer(ret, size)
   def as_buffer(self, src:MetalBuffer) -> memoryview:

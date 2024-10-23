@@ -1,7 +1,7 @@
 from __future__ import annotations
 import os, subprocess, pathlib, ctypes, tempfile, functools
 from typing import List, Any, Tuple, Optional, cast, TypeVar
-from tinygrad.helpers import prod, getenv, DEBUG, IOS
+from tinygrad.helpers import prod, getenv, DEBUG
 from tinygrad.device import Compiled, Compiler, CompileError, LRUAllocator
 from tinygrad.renderer.cstyle import MetalRenderer
 
@@ -133,7 +133,7 @@ class MetalProgram:
   def __init__(self, device:MetalDevice, name:str, lib:bytes):
     self.device, self.name, self.lib = device, name, lib
     self.fxn = new_var()
-    if IOS>0: add_to_objc("id<MTLFunction> "+self.fxn+" = [library newFunctionWithName: @\""+name+"\" ];")
+    add_to_objc("id<MTLFunction> "+self.fxn+" = [library newFunctionWithName: @\""+name+"\" ];")
     descriptor = msg("MTLComputePipelineDescriptor", "new", res=True)
     msg(descriptor, "setComputeFunction:", self.fxn)
     msg(descriptor, "setSupportIndirectCommandBuffers:", True)
@@ -170,18 +170,16 @@ class MetalAllocator(LRUAllocator):
     self.device.synchronize()
     assert False, "cannot copy from metal (IOS)"
   def copyin(self, dest:MetalBuffer, src:memoryview):
-    if IOS>0:
-      formatted_bytes = ("{"+ ", ".join([f"0x{byte:02x}" for byte in src.tobytes()])+ "}")
-      add_to_objc("memcpy(["+objc_name(dest.buf)+" contents], (uint8_t[])"+formatted_bytes+", "+str(src.nbytes)+");")
+    formatted_bytes = ("{"+ ", ".join([f"0x{byte:02x}" for byte in src.tobytes()])+ "}")
+    add_to_objc("memcpy(["+objc_name(dest.buf)+" contents], (uint8_t[])"+formatted_bytes+", "+str(src.nbytes)+");")
   def offset(self, buf:MetalBuffer, size:int, offset:int): return MetalBuffer(buf.buf, size, offset)
 
 class MetalDevice(Compiled):
   def __init__(self, device:str):
     self.device = new_var()
-    if IOS>0:
-      with open('tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m', 'w') as dest,\
-      open('tinygrad-objc-ios/tinygrad-objc-ios/templateViewController.m', 'r') as src: dest.write(src.read())
-      add_to_objc("id<MTLDevice> "+objc_name(self.device)+" = MTLCreateSystemDefaultDevice();")
+    with open('tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m', 'w') as dest,\
+    open('tinygrad-objc-ios/tinygrad-objc-ios/templateViewController.m', 'r') as src: dest.write(src.read())
+    add_to_objc("id<MTLDevice> "+objc_name(self.device)+" = MTLCreateSystemDefaultDevice();")
     self.mtl_queue = msg(self.device, "newCommandQueueWithMaxCommandBufferCount:", 1024, res=True)
     self.mtl_buffers_in_flight: List[Any] = []
 

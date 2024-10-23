@@ -1,7 +1,7 @@
 from typing import List, Dict, Optional, cast, Generator, Tuple
 import time, pprint
 from dataclasses import dataclass, replace
-from tinygrad.helpers import colored, getenv, DEBUG, GlobalCounters, ansilen, BEAM, NOOPT, all_int, CAPTURING, Metadata, Context, TRACEMETA, IOS
+from tinygrad.helpers import colored, getenv, DEBUG, GlobalCounters, ansilen, BEAM, NOOPT, all_int, CAPTURING, Metadata, Context, TRACEMETA
 from tinygrad.ops import UOps, UOp, Variable, sym_infer, sint
 from tinygrad.dtype import dtypes
 from tinygrad.device import Device, Buffer
@@ -122,13 +122,11 @@ class BufferCopy(Runner):
       file_name = file_name[:file_name.index("/")]
       file_name = file_name[::-1]
       buf_name = str(dest._buf.buf)
-      #TODO clean
-      if IOS>0:
-        line = ""
-        if file_name not in open("tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m").read(): line += "NSData *f"+file_name+" = [NSData dataWithContentsOfURL:\
-  [[NSBundle mainBundle] URLForResource:@\""+file_name+"\" withExtension:nil]];\n"
-        line += "memcpy(["+buf_name+" contents] + "+str(dest.offset)+", [f"+file_name+" bytes] + "+str(src.offset)+", "+str(src.nbytes)+");"
-        add_to_objc(line)
+      line = ""
+      if file_name not in open("tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m").read(): line += "NSData *f"+file_name+" = [NSData dataWithContentsOfURL:\
+[[NSBundle mainBundle] URLForResource:@\""+file_name+"\" withExtension:nil]];\n"
+      line += "memcpy(["+buf_name+" contents] + "+str(dest.offset)+", [f"+file_name+" bytes] + "+str(src.offset)+", "+str(src.nbytes)+");"
+      add_to_objc(line)
     if src.device.startswith("DISK") and hasattr(dest.allocator, 'as_buffer'): return
     dest.copyin(src.as_buffer(allow_zero_copy=True))
   def __call__(self, rawbufs:List[Buffer], var_vals:Dict[Variable, int], wait=False):

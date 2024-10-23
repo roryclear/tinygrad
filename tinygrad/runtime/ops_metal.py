@@ -15,6 +15,7 @@ class MTLPipelineOption:
 
 def objc_name(x,selector=None):
   if x == None: return "Nil"
+  if type(x) == bool: return str(x).lower()
   if type(x) == str: return x
   if type(x) == int: return str(x)
   if type(x) == list:
@@ -22,11 +23,7 @@ def objc_name(x,selector=None):
   if type(x) == tuple:
     if selector == "executeCommandsInBuffer:withRange:": return "NSMakeRange" + str(x)
     return "MTLSizeMake" + str(x)
-  x_s = str(x)
-  if x_s == "True": return "true"
-  if x_s == "False": return "false"
-  if ")" in x_s: return "&error"
-  return x_s.replace("b'", "").replace("'", "")
+  return str(x).replace("b'", "").replace("'", "")
 
 objc_types = {"newCommandQueueWithMaxCommandBufferCount:":"id<MTLCommandQueue> ","newSharedEvent":"id<MTLSharedEvent> ",
               "stringWithUTF8String:":"NSString *","newBufferWithLength:options:":"id<MTLBuffer> ",
@@ -135,13 +132,9 @@ class MetalAllocator(LRUAllocator):
     # Buffer is explicitly released in _free() rather than garbage collected via reference count
     ret = msg(self.device.device, "newBufferWithLength:options:", size, MTLResourceOptions.MTLResourceStorageModeShared, res=True)
     return MetalBuffer(ret, size)
-  def _free(self, opaque:MetalBuffer, options): return
-  def transfer(self, dest:MetalBuffer, src:MetalBuffer, sz:int, src_dev:MetalDevice, dest_dev:MetalDevice): return
-  def from_buffer(self, src:memoryview) -> Optional[Any]:
-    return
   def as_buffer(self, src:MetalBuffer) -> memoryview:
     self.device.synchronize()
-    assert False, "cannot copy from metal (IOS)"
+    assert False, "cannot copy from metal (iOS)"
   def copyin(self, dest:MetalBuffer, src:memoryview):
     formatted_bytes = ("{"+ ", ".join([f"0x{byte:02x}" for byte in src.tobytes()])+ "}")
     add_to_objc("memcpy(["+objc_name(dest.buf)+" contents], (uint8_t[])"+formatted_bytes+", "+str(src.nbytes)+");")

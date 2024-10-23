@@ -1,5 +1,5 @@
 from __future__ import annotations
-import os, ctypes, functools
+import os, functools
 from typing import List, Any, Tuple, Optional
 from tinygrad.helpers import getenv
 from tinygrad.device import Compiled, Compiler, LRUAllocator
@@ -43,17 +43,12 @@ def new_var():
 def msg(ptr, selector: str, /, *args: Any, res=False):
   ret = None
   if selector == "new":
-    ret = new_var()
-    add_to_objc(objc_name(ptr) + " *"+ret+" = ["+objc_name(ptr)+" new];")
+    add_to_objc(objc_name(ptr) + " *"+(ret:=new_var())+" = ["+objc_name(ptr)+" new];")
     return ret
   
   line = ""
-  if ":" in selector:
-    labels = selector.split(":")
-  else:
-    labels = [selector]
-  if res:
-    line += objc_types[selector] + (ret := new_var()) + " = "
+  labels = selector.split(":") if ":" in selector else [selector]
+  if res: line += objc_types[selector] + (ret := new_var()) + " = "
   line += "[" + objc_name(ptr) + " "
   for i,a in enumerate(labels):
     line += a
@@ -92,7 +87,7 @@ class MetalProgram:
     encoder = msg(command_buffer, "computeCommandEncoder", res=True)
     msg(encoder, "setComputePipelineState:", self.pipeline_state)
     for i,a in enumerate(bufs): msg(encoder, "setBuffer:offset:atIndex:", a.buf, a.offset, i)
-    for i,a in enumerate(vals,start=len(bufs)): msg(encoder, "setBytes:length:atIndex:", bytes(ctypes.c_int(a)), 4, i)
+    for i,a in enumerate(vals,start=len(bufs)): msg(encoder, "setBytes:length:atIndex:", a.to_bytes(4, byteorder='little'), 4, i)
     msg(encoder, "dispatchThreadgroups:threadsPerThreadgroup:", global_size, local_size)
     msg(encoder, "endEncoding")
     msg(command_buffer, "commit")

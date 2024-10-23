@@ -5,16 +5,6 @@ from tinygrad.helpers import prod, getenv, DEBUG
 from tinygrad.device import Compiled, Compiler, CompileError, LRUAllocator
 from tinygrad.renderer.cstyle import MetalRenderer
 
-class objc_id(ctypes.c_void_p): # This prevents ctypes from converting response to plain int, and dict.fromkeys() can use it to dedup
-  def __hash__(self): return hash(self.value)
-  def __eq__(self, other): return self.value == other.value
-
-class objc_instance(objc_id): # method with name "new", "alloc" should be freed after use
-  def __del__(self): return
-
-@functools.lru_cache(None)
-def sel(name: str): return libobjc.sel_registerName(name.encode())
-
 class MTLResourceOptions:
   MTLResourceCPUCacheModeDefaultCache = 0
   MTLResourceStorageModeShared = 0 << 4
@@ -22,15 +12,6 @@ class MTLResourceOptions:
 class MTLPipelineOption:
   MTLPipelineOptionNone = 0
 
-libobjc = ctypes.CDLL("/usr/lib/libobjc.dylib")
-libmetal = ctypes.CDLL("/System/Library/Frameworks/Metal.framework/Metal")
-# Must be loaded for default Metal Device: https://developer.apple.com/documentation/metal/1433401-mtlcreatesystemdefaultdevice?language=objc
-ctypes.CDLL("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics")
-libdispatch = ctypes.CDLL("/usr/lib/libSystem.dylib") # libdispatch is part of libSystem on mac
-libobjc.objc_getClass.restype = objc_id
-libobjc.sel_registerName.restype = objc_id
-libmetal.MTLCreateSystemDefaultDevice.restype = objc_instance
-libdispatch.dispatch_data_create.restype = objc_instance
 
 def objc_name(x,selector=None):
   if x == None: return "Nil"
@@ -107,11 +88,6 @@ def msg(ptr, selector: str, /, *args: Any, res=False):
   add_to_objc(line)
   return ret
 
-def to_struct(*t: int, _type: type = ctypes.c_ulong):
-  class Struct(ctypes.Structure): pass
-  Struct._fields_ = [(f"field{i}", _type) for i in range(len(t))]
-  return Struct(*t)
-
 def wait_check(cbuf: Any):
   msg(cbuf, "waitUntilCompleted")
 
@@ -124,9 +100,6 @@ class MetalCompiler(Compiler):
     file = open("tinygrad-objc-ios/f.metal", "a")
     file.write(src+"\n")
     file.close()
-    if self.device is None:
-      air = subprocess.check_output(['xcrun', '-sdk', 'macosx', 'metal', '-x', 'metal', '-c', '-', '-o', '-'], input=src.encode('utf-8'))
-      return subprocess.check_output(['xcrun', '-sdk', 'macosx', 'metallib', '-', '-o', '-'], input=air)
     return
 
 class MetalProgram:
@@ -138,7 +111,7 @@ class MetalProgram:
     msg(descriptor, "setComputeFunction:", self.fxn)
     msg(descriptor, "setSupportIndirectCommandBuffers:", True)
     self.pipeline_state = msg(self.device.device, "newComputePipelineStateWithDescriptor:options:reflection:error:",
-      descriptor, MTLPipelineOption.MTLPipelineOptionNone, None, ctypes.byref(objc_instance()), res=True)
+      descriptor, MTLPipelineOption.MTLPipelineOptionNone, None, "&error", res=True)
 
   def __call__(self, *bufs, global_size:Tuple[int,int,int]=(1,1,1), local_size:Tuple[int,int,int]=(1,1,1), vals:Tuple[int, ...]=(), wait=False):
     command_buffer = msg(self.device.mtl_queue, "commandBuffer", res=True)
@@ -183,9 +156,8 @@ class MetalDevice(Compiled):
     self.mtl_queue = msg(self.device, "newCommandQueueWithMaxCommandBufferCount:", 1024, res=True)
     self.mtl_buffers_in_flight: List[Any] = []
 
-    from tinygrad.runtime.graph.metal import MetalGraph
     super().__init__(device, MetalAllocator(self), MetalRenderer(), MetalCompiler(None if getenv("METAL_XCODE") else self),
-                     functools.partial(MetalProgram, self), MetalGraph)
+                     functools.partial(MetalProgram, self), None)
   def synchronize(self):
     for cbuf in self.mtl_buffers_in_flight: wait_check(cbuf)
     self.mtl_buffers_in_flight.clear()

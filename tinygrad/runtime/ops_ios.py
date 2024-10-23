@@ -105,7 +105,7 @@ class iosAllocator(LRUAllocator):
     return iosBuffer(ret, size)
   def as_buffer(self, src:iosBuffer) -> memoryview:
     self.device.synchronize()
-    assert False, "cannot copy from ios (iOS)"
+    assert False, "cannot copy from ios"
   def copy_from_disk(self,dest,src):
     file_name = src.device[::-1]
     file_name = file_name[:file_name.index("/")]

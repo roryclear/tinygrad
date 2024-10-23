@@ -6,7 +6,7 @@ from tinygrad.device import Buffer
 from tinygrad.engine.realize import ExecItem, CompiledRunner
 from tinygrad.engine.jit import GraphRunner, GraphException
 from tinygrad.ops import Variable
-from tinygrad.runtime.ops_metal import wait_check, msg, msg_ios, msg_ios2, libobjc, to_struct, objc_instance,\
+from tinygrad.runtime.ops_metal import wait_check, msg_ios2, libobjc, to_struct, objc_instance,\
   MTLResourceOptions, objc_id
 
 class MTLIndirectCommandType:

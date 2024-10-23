@@ -84,13 +84,6 @@ def new_var():
 
 T = TypeVar("T")
 # Ignore mypy error reporting incompatible default, because typevar default only works on python 3.12
-def msg(ptr: objc_id, selector: str, /, *args: Any, restype: type[T] = objc_id) -> T: # type: ignore [assignment]
-  sender = libobjc["objc_msgSend"] # Using attribute access returns a new reference so setting restype is safe
-  sender.restype = restype
-  return sender(ptr, sel(selector), *args)
-
-T = TypeVar("T")
-# Ignore mypy error reporting incompatible default, because typevar default only works on python 3.12
 def msg_ios2(ptr, selector: str, /, *args: Any, restype: type[T] = None) -> T: # type: ignore [assignment]
   ret = new_var()
   if selector == "new":
@@ -105,54 +98,6 @@ def msg_ios2(ptr, selector: str, /, *args: Any, restype: type[T] = None) -> T: #
     labels = [selector]
   if restype != None:
     line +=  objc_types[selector] + ret + " = "
-  if ":" in selector:
-    selector = selector[selector.index(":")+1:]
-  while ":" in selector: #TODO
-    labels.append(selector[:selector.index(":")])
-    selector = selector[selector.index(":")+1:]
-  line += "[" + objc_name(ptr) + " "
-  for i,a in enumerate(labels):
-    line += a
-    if i < len(args):
-      line += ": "
-      if a in quotes: line += "\""
-      line += objc_name(args[i],selector=selector_in)
-      if a in quotes: line += "\""
-      line += " "
-  line += "];"
-  add_to_objc(line)
-  return ret
-
-T = TypeVar("T")
-# Ignore mypy error reporting incompatible default, because typevar default only works on python 3.12
-def msg_ios(ptr: objc_id, selector: str, /, *args: Any, restype: type[T] = None) -> T: # type: ignore [assignment]
-  sender = libobjc["objc_msgSend"] # Using attribute access returns a new reference so setting restype is safe
-  sender.restype = restype
-  args_copy = []
-  for i,x in enumerate(args):
-    if type(x) == tuple:
-      args_copy.append(to_struct(*x))
-    elif type(x) == list:
-      args_copy.append((objc_id * len(x))(*x))
-    else:
-      args_copy.append(x)
-  if type(ptr) == bytes:
-    ret = sender(libobjc.objc_getClass(ptr), sel(selector), *args_copy)
-  else:
-    ret = sender(ptr, sel(selector), *args_copy)
-  if selector == "new":
-    if IOS>0: add_to_objc(objc_name(ptr) + " *"+objc_name(ret,og=False)+" = ["+objc_name(ptr)+" new];")
-    return ret
-  if IOS<1: return ret
-
-  line = ""
-  selector_in = selector
-  if ":" in selector:
-    labels = [selector[:selector.index(":")]]
-  else:
-    labels = [selector]
-  if restype != None:
-    line +=  objc_types[selector] + objc_name(ret,og=False) + " = "
   if ":" in selector:
     selector = selector[selector.index(":")+1:]
   while ":" in selector: #TODO

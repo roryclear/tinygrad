@@ -119,6 +119,8 @@ class BufferCopy(Runner):
     if src.device.startswith("DISK") and dest.device == "IOS": 
       dest.allocator.copy_from_disk(dest,src)
       return
+    if src.device == "IOS":
+      return src.allocator.copyout(dest,src)
     disk_supports_fast_copyout = src.device.startswith("DISK") and hasattr(src.allocator.device, 'io_uring') and \
       getattr(src.allocator.device, 'fd', None) is not None
     if src.device.startswith("DISK") and hasattr(dest.allocator, 'copy_from_disk') and disk_supports_fast_copyout and src.nbytes >= 4096:

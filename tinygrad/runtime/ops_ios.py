@@ -105,7 +105,9 @@ class iosAllocator(LRUAllocator):
     return iosBuffer(ret, size)
   def as_buffer(self, src:iosBuffer) -> memoryview:
     self.device.synchronize()
-    assert False, "cannot copy from ios"
+    var = new_var()
+    add_to_objc("void *"+var+" = malloc(["+str(src._buf.buf)+" length]); memcpy("+var+", ["+str(src._buf.buf)+" contents], ["+str(src._buf.buf)+" length]);")
+    return iosBuffer(var,src.size)
   def copy_from_disk(self,dest,src):
     file_name = src.device[::-1]
     file_name = file_name[:file_name.index("/")]
@@ -116,10 +118,11 @@ class iosAllocator(LRUAllocator):
 [[NSBundle mainBundle] URLForResource:@\""+file_name+"\" withExtension:nil]];\n"
     line += "memcpy(["+buf_name+" contents] + "+str(dest.offset)+", [f"+file_name+" bytes] + "+str(src.offset)+", "+str(src.nbytes)+");"
     add_to_objc(line)
-
   def copyin(self, dest:iosBuffer, src:memoryview):
     formatted_bytes = ("{"+ ", ".join([f"0x{byte:02x}" for byte in src.tobytes()])+ "}")
     add_to_objc("memcpy(["+objc_name(dest.buf)+" contents], (uint8_t[])"+formatted_bytes+", "+str(src.nbytes)+");")
+  def copyout(self, dest:memoryview, src:iosBuffer):
+    return self.as_buffer(src)
   def offset(self, buf:iosBuffer, size:int, offset:int): return iosBuffer(buf.buf, size, offset)
 
 class iosDevice(Compiled):

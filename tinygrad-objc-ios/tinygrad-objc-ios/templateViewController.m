@@ -13,8 +13,8 @@
     id<MTLLibrary> library = [MTLCreateSystemDefaultDevice() newDefaultLibrary];
     CFTimeInterval startTime = CACurrentMediaTime();
 
-    //CODE HERE
-    //END
+    //VARS
+    //CODE
     //NSLog(@"%d", *((int32_t *)variable));
     NSLog(@"Time: %f seconds", CACurrentMediaTime() - startTime);
 }

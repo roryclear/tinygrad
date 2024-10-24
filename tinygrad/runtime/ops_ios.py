@@ -25,11 +25,14 @@ objc_types = {"newCommandQueueWithMaxCommandBufferCount:":"id<MTLCommandQueue> "
               "newComputePipelineStateWithDescriptor:options:reflection:error:":"id<MTLComputePipelineState> ",
               "commandBuffer":"id<MTLCommandBuffer> ","computeCommandEncoder":"id<MTLComputeCommandEncoder> "}
 
-def add_to_objc(line):
+decs = {"newBufferWithLength:options:","newCommandQueueWithMaxCommandBufferCount:"}
+
+def add_to_objc(line,dec=False):
   with open("tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m", "r") as file:
+    marker = "//VARS" if dec else "//CODE"
     lines = file.readlines()
     for i,l in enumerate(lines):
-      if "//END" in l:
+      if marker in l:
         lines.insert(i, line + "\n")
         with open("tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m", "w") as file:
           file.writelines(lines)
@@ -42,10 +45,10 @@ def new_var():
 
 def msg(ptr, selector: str, /, *args: Any, res=False):
   ret = None
+  dec = selector in decs
   if selector == "new":
-    add_to_objc(objc_name(ptr) + " *"+(ret:=new_var())+" = ["+objc_name(ptr)+" new];")
+    add_to_objc(objc_name(ptr) + " *"+(ret:=new_var())+" = ["+objc_name(ptr)+" new];",dec)
     return ret
-  
   line = ""
   labels = selector.split(":") if ":" in selector else [selector]
   if res: line += objc_types[selector] + (ret := new_var()) + " = "
@@ -54,7 +57,7 @@ def msg(ptr, selector: str, /, *args: Any, res=False):
     line += a
     if i < len(args): line += ": " + objc_name(args[i]) + " "
   line += "];"
-  add_to_objc(line)
+  add_to_objc(line,dec)
   return ret
 
 def wait_check(cbuf: Any):
@@ -75,7 +78,7 @@ class iosProgram:
   def __init__(self, device:iosDevice, name:str, lib:bytes):
     self.device, self.name, self.lib = device, name, lib
     self.fxn = new_var()
-    add_to_objc("id<MTLFunction> "+self.fxn+" = [library newFunctionWithName: @\""+name+"\" ];")
+    add_to_objc("id<MTLFunction> "+self.fxn+" = [library newFunctionWithName: @\""+name+"\" ];",dec=True)
     descriptor = msg("MTLComputePipelineDescriptor", "new", res=True)
     msg(descriptor, "setComputeFunction:", self.fxn)
     msg(descriptor, "setSupportIndirectCommandBuffers:", True)
@@ -117,7 +120,7 @@ class iosAllocator(LRUAllocator):
     if file_name not in open("tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m").read(): line += "NSData *f"+file_name+" = [NSData dataWithContentsOfURL:\
 [[NSBundle mainBundle] URLForResource:@\""+file_name+"\" withExtension:nil]];\n"
     line += "memcpy(["+buf_name+" contents] + "+str(dest.offset)+", [f"+file_name+" bytes] + "+str(src.offset)+", "+str(src.nbytes)+");"
-    add_to_objc(line)
+    add_to_objc(line,dec=True)
   def copyin(self, dest:iosBuffer, src:memoryview):
     formatted_bytes = ("{"+ ", ".join([f"0x{byte:02x}" for byte in src.tobytes()])+ "}")
     add_to_objc("memcpy(["+objc_name(dest.buf)+" contents], (uint8_t[])"+formatted_bytes+", "+str(src.nbytes)+");")
@@ -130,7 +133,7 @@ class iosDevice(Compiled):
     self.device = new_var()
     with open('tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m', 'w') as dest,\
     open('tinygrad-objc-ios/tinygrad-objc-ios/templateViewController.m', 'r') as src: dest.write(src.read())
-    add_to_objc("id<MTLDevice> "+objc_name(self.device)+" = MTLCreateSystemDefaultDevice();")
+    add_to_objc("id<MTLDevice> "+objc_name(self.device)+" = MTLCreateSystemDefaultDevice();",dec=True)
     self.mtl_queue = msg(self.device, "newCommandQueueWithMaxCommandBufferCount:", 1024, res=True)
     self.mtl_buffers_in_flight: List[Any] = []
 

@@ -11,11 +11,16 @@
 @implementation ViewController
 
 NSMutableDictionary<NSString *, id<MTLBuffer>> *buffers;
+NSMutableDictionary<NSString *, NSData *> *file_data;
 id<MTLDevice> device;
 
 - (void)viewDidLoad {
     device = MTLCreateSystemDefaultDevice();
     buffers = [[NSMutableDictionary alloc] init];
+    file_data = [[NSMutableDictionary alloc] init];
+    
+    //NSData *f113965bb5fe7074edc9ca25991e7ad35 = [NSData dataWithContentsOfURL:[[NSBundle mainBundle] URLForResource:@"113965bb5fe7074edc9ca25991e7ad35" withExtension:nil]]; //TODO
+    [file_data setObject:[NSData dataWithContentsOfURL:[[NSBundle mainBundle] URLForResource:@"113965bb5fe7074edc9ca25991e7ad35" withExtension:nil]] forKey:@"113965bb5fe7074edc9ca25991e7ad35"]; //TODO
     [super viewDidLoad];
     [self startHTTPServer];
 }
@@ -59,12 +64,11 @@ id<MTLDevice> device;
 
 // Callback function to handle incoming connections
 static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFDataRef address, const void *data, void *info) {
-    ViewController *viewController = (__bridge ViewController *)info;
     if (type != kCFSocketAcceptCallBack) return;
     
     // Accept the incoming connection
     CFSocketNativeHandle handle = *(CFSocketNativeHandle *)data;
-    char buffer[1024*100] = {0}; //TODO how big should this be?
+    char buffer[1024*100] = {0}; //TODO how big/small should this be?
     
     // Read data from the client
     ssize_t receivedBytes = recv(handle, buffer, sizeof(buffer) - 1, 0);
@@ -121,6 +125,9 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 NSLog(@"func? %@",queue[i][0]);
                 if ([queue[i][0] isEqualToString:@"new_buffer"])  {
                     [buffers setObject:[device newBufferWithLength:[queue[i][2] intValue] options:MTLResourceStorageModeShared] forKey:queue[i][1]];
+                }
+                if ([queue[i][0] isEqualToString:@"memcpy"])  {
+                    memcpy([buffers[queue[i][1]] contents] + 0, [file_data[queue[i][2]] bytes] + [queue[i][3] intValue], [queue[i][4] intValue]); //TODO check this, also dest offset?
                 }
             }
         }

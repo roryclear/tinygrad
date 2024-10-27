@@ -107,28 +107,15 @@ class iosAllocator(LRUAllocator):
     self.device:iosDevice = device
     super().__init__()
   def _alloc(self, size:int, options) -> iosBuffer:
-    ret = msg(self.device.device, "newBufferWithLength:options:", size, MTLResourceOptions.MTLResourceStorageModeShared, res=True)
-    self.device.queue["queue"].append(["new_buffer",ret,size])
+    self.device.queue["queue"].append(["new_buffer",ret:=new_var(),size])
+    if len(self.device.queue["queue"]) > 20: #TODO what should this limit be if any?
+      self.device.send_queue()
     return iosBuffer(ret, size)
   def as_buffer(self, src:iosBuffer) -> memoryview:
     self.device.synchronize()
     var = new_var()
     #self.device.queue["queue"].append(["copyout",str(src._buf.buf)])
-    # Replace 'your-iphone-ip' with your iPhone's IP address
-    url = "http://192.168.1.105:8081"
-    payload = self.device.queue
-    status = 400
-    print(payload)
-    while status != 200:
-        response = requests.post(url, json=payload)
-        self.device.queue = {"queue":[]} #TODO: hack to not crash iOS
-        if response.status_code == 200:
-            status = 200
-            print("response =",response.text)
-            time.sleep(1)
-        else:
-            print("response =",response.status_code)
-            time.sleep(2)
+    self.device.send_queue()
     #add_to_objc("void *"+var+" = malloc(["+str(src._buf.buf)+" length]); memcpy("+var+", ["+str(src._buf.buf)+" contents], ["+str(src._buf.buf)+" length]);")
     return iosBuffer(var,src.size)
   def copy_from_disk(self,dest,src):
@@ -139,7 +126,10 @@ class iosAllocator(LRUAllocator):
     line = ""
     #if file_name not in open("tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m").read(): line += "NSData *f"+file_name+" = [NSData dataWithContentsOfURL:\
 #[[NSBundle mainBundle] URLForResource:@\""+file_name+"\" withExtension:nil]];\n"
-    line += "memcpy(["+buf_name+" contents] + "+str(dest.offset)+", [f"+file_name+" bytes] + "+str(src.offset)+", "+str(src.nbytes)+");"
+    self.device.queue["queue"].append(["memcpy",buf_name,file_name,src.offset,src.nbytes])
+    if len(self.device.queue["queue"]) > 20:
+      self.device.send_queue()
+    #line += "memcpy(["+buf_name+" contents] + "+str(dest.offset)+", [f"+file_name+" bytes] + "+str(src.offset)+", "+str(src.nbytes)+");"
     #add_to_objc(line,dec=True)
   def copyin(self, dest:iosBuffer, src:memoryview):
     formatted_bytes = ("{"+ ", ".join([f"0x{byte:02x}" for byte in src.tobytes()])+ "}")
@@ -163,3 +153,21 @@ class iosDevice(Compiled):
   def synchronize(self):
     for cbuf in self.mtl_buffers_in_flight: wait_check(cbuf)
     self.mtl_buffers_in_flight.clear()
+
+  def send_queue(self):
+    # Replace 'your-iphone-ip' with your iPhone's IP address
+    url = "http://192.168.1.105:8081"
+    payload = self.queue
+    status = 400
+    print(payload)
+    while status != 200:
+        response = requests.post(url, json=payload)
+        self.queue = {"queue":[]} #TODO: hack to not crash iOS
+        if response.status_code == 200:
+            status = 200
+            print("response =",response.text)
+            time.sleep(1)
+        else:
+            print("response =",response.status_code)
+            time.sleep(2)
+    

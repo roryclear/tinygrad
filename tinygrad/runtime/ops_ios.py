@@ -114,7 +114,7 @@ class iosAllocator(LRUAllocator):
   def as_buffer(self, src:iosBuffer) -> memoryview:
     self.device.synchronize()
     var = new_var()
-    #self.device.queue["queue"].append(["copyout",str(src._buf.buf)])
+    self.device.queue["queue"].append(["copyout",str(src._buf.buf)])
     self.device.send_queue()
     #add_to_objc("void *"+var+" = malloc(["+str(src._buf.buf)+" length]); memcpy("+var+", ["+str(src._buf.buf)+" contents], ["+str(src._buf.buf)+" length]);")
     return iosBuffer(var,src.size)
@@ -161,13 +161,16 @@ class iosDevice(Compiled):
     status = 400
     print(payload)
     while status != 200:
-        response = requests.post(url, json=payload)
+      try:
+        response = requests.post(url, json=payload,timeout=30)
         self.queue = {"queue":[]} #TODO: hack to not crash iOS
         if response.status_code == 200:
             status = 200
             print("response =",response.text)
-            time.sleep(1)
         else:
             print("response =",response.status_code)
             time.sleep(2)
+      except requests.exceptions.RequestException as e:
+        print("An error occurred:", e)
+        time.sleep(2)
     

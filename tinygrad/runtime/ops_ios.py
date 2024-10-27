@@ -47,7 +47,8 @@ def msg(ptr, selector: str, /, *args: Any, res=False):
   ret = None
   dec = selector in decs
   if selector == "new":
-    add_to_objc(objc_name(ptr) + " *"+(ret:=new_var())+" = ["+objc_name(ptr)+" new];",dec)
+    #add_to_objc(objc_name(ptr) + " *"+(ret:=new_var())+" = ["+objc_name(ptr)+" new];",dec)
+    ret = new_var()
     return ret
   line = ""
   labels = selector.split(":") if ":" in selector else [selector]
@@ -57,7 +58,7 @@ def msg(ptr, selector: str, /, *args: Any, res=False):
     line += a
     if i < len(args): line += ": " + objc_name(args[i]) + " "
   line += "];"
-  add_to_objc(line,dec)
+  #add_to_objc(line,dec)
   return ret
 
 def wait_check(cbuf: Any):
@@ -65,20 +66,20 @@ def wait_check(cbuf: Any):
 
 class iosCompiler(Compiler):
   def __init__(self, device:Optional[iosDevice]):
-    if os.path.exists("tinygrad-objc-ios/f.metal"): os.remove("tinygrad-objc-ios/f.metal")
+    #if os.path.exists("tinygrad-objc-ios/f.metal"): os.remove("tinygrad-objc-ios/f.metal")
     self.device = device
     super().__init__("compile_ios")
   def compile(self, src:str) -> bytes:
-    file = open("tinygrad-objc-ios/f.metal", "a")
-    file.write(src+"\n")
-    file.close()
+    #file = open("tinygrad-objc-ios/f.metal", "a")
+    #file.write(src+"\n")
+    #file.close()
     return
 
 class iosProgram:
   def __init__(self, device:iosDevice, name:str, lib:bytes):
     self.device, self.name, self.lib = device, name, lib
     self.fxn = new_var()
-    add_to_objc("id<MTLFunction> "+self.fxn+" = [library newFunctionWithName: @\""+name+"\" ];",dec=True)
+    #add_to_objc("id<MTLFunction> "+self.fxn+" = [library newFunctionWithName: @\""+name+"\" ];",dec=True)
     descriptor = msg("MTLComputePipelineDescriptor", "new", res=True)
     msg(descriptor, "setComputeFunction:", self.fxn)
     msg(descriptor, "setSupportIndirectCommandBuffers:", True)
@@ -109,7 +110,7 @@ class iosAllocator(LRUAllocator):
   def as_buffer(self, src:iosBuffer) -> memoryview:
     self.device.synchronize()
     var = new_var()
-    add_to_objc("void *"+var+" = malloc(["+str(src._buf.buf)+" length]); memcpy("+var+", ["+str(src._buf.buf)+" contents], ["+str(src._buf.buf)+" length]);")
+    #add_to_objc("void *"+var+" = malloc(["+str(src._buf.buf)+" length]); memcpy("+var+", ["+str(src._buf.buf)+" contents], ["+str(src._buf.buf)+" length]);")
     return iosBuffer(var,src.size)
   def copy_from_disk(self,dest,src):
     file_name = src.device[::-1]
@@ -117,13 +118,13 @@ class iosAllocator(LRUAllocator):
     file_name = file_name[::-1]
     buf_name = str(dest._buf.buf)
     line = ""
-    if file_name not in open("tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m").read(): line += "NSData *f"+file_name+" = [NSData dataWithContentsOfURL:\
-[[NSBundle mainBundle] URLForResource:@\""+file_name+"\" withExtension:nil]];\n"
+    #if file_name not in open("tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m").read(): line += "NSData *f"+file_name+" = [NSData dataWithContentsOfURL:\
+#[[NSBundle mainBundle] URLForResource:@\""+file_name+"\" withExtension:nil]];\n"
     line += "memcpy(["+buf_name+" contents] + "+str(dest.offset)+", [f"+file_name+" bytes] + "+str(src.offset)+", "+str(src.nbytes)+");"
-    add_to_objc(line,dec=True)
+    #add_to_objc(line,dec=True)
   def copyin(self, dest:iosBuffer, src:memoryview):
     formatted_bytes = ("{"+ ", ".join([f"0x{byte:02x}" for byte in src.tobytes()])+ "}")
-    add_to_objc("memcpy(["+objc_name(dest.buf)+" contents], (uint8_t[])"+formatted_bytes+", "+str(src.nbytes)+");")
+    #add_to_objc("memcpy(["+objc_name(dest.buf)+" contents], (uint8_t[])"+formatted_bytes+", "+str(src.nbytes)+");")
   def copyout(self, dest:memoryview, src:iosBuffer):
     return self.as_buffer(src)
   def offset(self, buf:iosBuffer, size:int, offset:int): return iosBuffer(buf.buf, size, offset)
@@ -131,9 +132,9 @@ class iosAllocator(LRUAllocator):
 class iosDevice(Compiled):
   def __init__(self, device:str):
     self.device = new_var()
-    with open('tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m', 'w') as dest,\
-    open('tinygrad-objc-ios/tinygrad-objc-ios/templateViewController.m', 'r') as src: dest.write(src.read())
-    add_to_objc("id<MTLDevice> "+objc_name(self.device)+" = MTLCreateSystemDefaultDevice();",dec=True)
+    #with open('tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m', 'w') as dest,\
+    #open('tinygrad-objc-ios/tinygrad-objc-ios/templateViewController.m', 'r') as src: dest.write(src.read())
+    #add_to_objc("id<MTLDevice> "+objc_name(self.device)+" = MTLCreateSystemDefaultDevice();",dec=True)
     self.mtl_queue = msg(self.device, "newCommandQueueWithMaxCommandBufferCount:", 1024, res=True)
     self.mtl_buffers_in_flight: List[Any] = []
 

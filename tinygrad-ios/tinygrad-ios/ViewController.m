@@ -2,6 +2,7 @@
 #import <sys/socket.h>
 #import <netinet/in.h>
 #import <Foundation/Foundation.h>
+#import <Metal/Metal.h>
 
 @interface ViewController ()
 @property (nonatomic) CFSocketRef socket;
@@ -10,6 +11,7 @@
 @implementation ViewController
 
 - (void)viewDidLoad {
+    NSMutableDictionary<NSString *, id<MTLBuffer>> *buffers;
     [super viewDidLoad];
     [self startHTTPServer];
 }
@@ -53,7 +55,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
     
     // Accept the incoming connection
     CFSocketNativeHandle handle = *(CFSocketNativeHandle *)data;
-    char buffer[1024] = {0};
+    char buffer[1024*100] = {0}; //TODO how big should this be?
     
     // Read data from the client
     ssize_t receivedBytes = recv(handle, buffer, sizeof(buffer) - 1, 0);
@@ -76,6 +78,18 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
     if (CFHTTPMessageIsHeaderComplete(httpRequest)) {
         // Extract the JSON body from the HTTP message
         NSData *bodyData = (__bridge_transfer NSData *)CFHTTPMessageCopyBody(httpRequest);
+        
+        if (!bodyData) {
+            // Respond with 400 Bad Request
+            const char *response = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\n\r\nInvalid request: Missing or malformed body.";
+            send(handle, response, strlen(response), 0);
+            
+            // Clean up and return
+            close(handle);
+            CFRelease(httpRequest);
+            CFRelease(dataRef);
+            return;
+        }
         
         // Parse the JSON data
         NSError *jsonError = nil;

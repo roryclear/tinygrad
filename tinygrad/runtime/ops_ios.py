@@ -117,12 +117,16 @@ class iosAllocator(LRUAllocator):
     # Replace 'your-iphone-ip' with your iPhone's IP address
     url = "http://192.168.1.105:8081"
     payload = self.device.queue
-    print("PAYLOAD =",payload)
-    response = requests.post(url, json=payload)
-    self.device.queue = {"queue":[]}
-    if response.status_code == 200:
-        print("response =",response.text)
-    time.sleep(2) #TODO obv remove, iOS is crashing atm
+    status = 400
+    while status != 200:
+        response = requests.post(url, json=payload)
+        self.device.queue = {"queue":["start"]} #TODO: hack to not crash iOS
+        if response.status_code == 200:
+            status = 200
+            print("response =",response.text)
+        else:
+            print("response =",response.status_code)
+            time.sleep(2)
     #add_to_objc("void *"+var+" = malloc(["+str(src._buf.buf)+" length]); memcpy("+var+", ["+str(src._buf.buf)+" contents], ["+str(src._buf.buf)+" length]);")
     return iosBuffer(var,src.size)
   def copy_from_disk(self,dest,src):
@@ -144,7 +148,7 @@ class iosAllocator(LRUAllocator):
 
 class iosDevice(Compiled):
   def __init__(self, device:str):
-    self.queue = {"queue":[]} #todo
+    self.queue = {"queue":["start"]} #todo
     self.device = new_var()
     #with open('tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m', 'w') as dest,\
     #open('tinygrad-objc-ios/tinygrad-objc-ios/templateViewController.m', 'r') as src: dest.write(src.read())

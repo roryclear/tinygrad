@@ -4,6 +4,8 @@ from typing import List, Any, Tuple, Optional
 from tinygrad.helpers import getenv
 from tinygrad.device import Compiled, Compiler, LRUAllocator
 from tinygrad.renderer.cstyle import MetalRenderer
+import requests
+import time
 
 class MTLResourceOptions:
   MTLResourceCPUCacheModeDefaultCache = 0
@@ -106,10 +108,21 @@ class iosAllocator(LRUAllocator):
     super().__init__()
   def _alloc(self, size:int, options) -> iosBuffer:
     ret = msg(self.device.device, "newBufferWithLength:options:", size, MTLResourceOptions.MTLResourceStorageModeShared, res=True)
+    self.device.queue["queue"].append(["new_buffer",ret,size])
     return iosBuffer(ret, size)
   def as_buffer(self, src:iosBuffer) -> memoryview:
     self.device.synchronize()
     var = new_var()
+    #self.device.queue["queue"].append(["copyout",str(src._buf.buf)])
+    # Replace 'your-iphone-ip' with your iPhone's IP address
+    url = "http://192.168.1.105:8081"
+    payload = self.device.queue
+    print("PAYLOAD =",payload)
+    response = requests.post(url, json=payload)
+    self.device.queue = {"queue":[]}
+    if response.status_code == 200:
+        print("response =",response.text)
+    time.sleep(2) #TODO obv remove, iOS is crashing atm
     #add_to_objc("void *"+var+" = malloc(["+str(src._buf.buf)+" length]); memcpy("+var+", ["+str(src._buf.buf)+" contents], ["+str(src._buf.buf)+" length]);")
     return iosBuffer(var,src.size)
   def copy_from_disk(self,dest,src):
@@ -131,6 +144,7 @@ class iosAllocator(LRUAllocator):
 
 class iosDevice(Compiled):
   def __init__(self, device:str):
+    self.queue = {"queue":[]} #todo
     self.device = new_var()
     #with open('tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m', 'w') as dest,\
     #open('tinygrad-objc-ios/tinygrad-objc-ios/templateViewController.m', 'r') as src: dest.write(src.read())

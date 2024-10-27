@@ -118,12 +118,14 @@ class iosAllocator(LRUAllocator):
     url = "http://192.168.1.105:8081"
     payload = self.device.queue
     status = 400
+    print(payload)
     while status != 200:
         response = requests.post(url, json=payload)
-        self.device.queue = {"queue":["start"]} #TODO: hack to not crash iOS
+        self.device.queue = {"queue":[]} #TODO: hack to not crash iOS
         if response.status_code == 200:
             status = 200
             print("response =",response.text)
+            time.sleep(1)
         else:
             print("response =",response.status_code)
             time.sleep(2)
@@ -148,7 +150,7 @@ class iosAllocator(LRUAllocator):
 
 class iosDevice(Compiled):
   def __init__(self, device:str):
-    self.queue = {"queue":["start"]} #todo
+    self.queue = {"queue":[]} #todo
     self.device = new_var()
     #with open('tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m', 'w') as dest,\
     #open('tinygrad-objc-ios/tinygrad-objc-ios/templateViewController.m', 'r') as src: dest.write(src.read())

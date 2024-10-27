@@ -10,10 +10,18 @@
 
 @implementation ViewController
 
+NSMutableDictionary<NSString *, id<MTLBuffer>> *buffers;
+id<MTLDevice> device;
+
 - (void)viewDidLoad {
-    NSMutableDictionary<NSString *, id<MTLBuffer>> *buffers;
+    device = MTLCreateSystemDefaultDevice();
+    buffers = [[NSMutableDictionary alloc] init];
     [super viewDidLoad];
     [self startHTTPServer];
+}
+
+- (void)new_buffer:(NSString *)key size:(int)size {
+    [buffers setObject:[device newBufferWithLength:size options:MTLResourceStorageModeShared] forKey:key];
 }
 
 - (void)startHTTPServer {
@@ -51,6 +59,7 @@
 
 // Callback function to handle incoming connections
 static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFDataRef address, const void *data, void *info) {
+    ViewController *viewController = (__bridge ViewController *)info;
     if (type != kCFSocketAcceptCallBack) return;
     
     // Accept the incoming connection
@@ -105,6 +114,17 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         
         // Log the received JSON dictionary
         NSLog(@"Received JSON: %@", jsonDict);
+        NSArray *queue = jsonDict[@"queue"];
+        for (int i = 0; i < [queue count]; i++) {
+            NSLog(@"Element at index %d: %@", i, queue[i]);
+            if ([queue[0] count] > 0) {
+                NSLog(@"func? %@",queue[i][0]);
+                if ([queue[i][0] isEqualToString:@"new_buffer"])  {
+                    [buffers setObject:[device newBufferWithLength:[queue[i][2] intValue] options:MTLResourceStorageModeShared] forKey:queue[i][1]];
+                }
+            }
+        }
+        
         
     }
     

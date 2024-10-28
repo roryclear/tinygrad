@@ -101,7 +101,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
     
     // Null-terminate and log received data
     buffer[receivedBytes] = '\0';
-    NSLog(@"Received data: %s", buffer);
+    //NSLog(@"Received data: %s", buffer);
 
     // Create CFData from the received buffer
     CFDataRef dataRef = CFDataCreate(NULL, (UInt8 *)buffer, (CFIndex)receivedBytes);
@@ -145,7 +145,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         for (int i = 0; i < [queue count]; i++) {
             //NSLog(@"Element at index %d: %@", i, queue[i]);
             if ([queue[0] count] > 0) {
-                NSLog(@"func? %@",queue[i][0]);
+                //NSLog(@"func? %@",queue[i][0]);
                 if ([queue[i][0] isEqualToString:@"new_buffer"])  {
                     //[buffers setObject:[device newBufferWithLength:[queue[i][2] intValue] options:MTLResourceStorageModeShared] forKey:queue[i][1]]
                     [objects setObject:[device newBufferWithLength:[queue[i][2] intValue] options:MTLResourceStorageModeShared] forKey:queue[i][1]];
@@ -155,10 +155,11 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                     memcpy([(id<MTLBuffer>)objects[queue[i][1]] contents] + 0, [(NSData *)objects[queue[i][2]] bytes] + [queue[i][3] intValue], [queue[i][4] intValue]); //TODO check this, also dest offset?
                 }
                 if ([queue[i][0] isEqualToString:@"copyout"])  {
-                    printBufferBytes(objects[queue[i][1]]);
+                    //printBufferBytes(objects[queue[i][1]]);
+                    NSLog(@"%d", *((int32_t *)[(id<MTLBuffer>)objects[queue[i][1]] contents]));
                 }
                 if ([queue[i][0] isEqualToString:@"new_function"])  {
-                    [objects setObject:[library newFunctionWithName: queue[i][1]] forKey:queue[i][2]];
+                    [objects setObject:[objects[queue[i][1]] newFunctionWithName: queue[i][1]] forKey:queue[i][2]]; //TODO don't need this structure?
                 }
                 if ([queue[i][0] isEqualToString:@"new_pipeline_state"])  {
                     [desc setComputeFunction: objects[queue[i][1]]];
@@ -178,7 +179,10 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                     [encoder setBuffer: objects[queue[i][1]] offset: [queue[i][2] intValue] atIndex: [queue[i][3] intValue] ];
                 }
                 if ([queue[i][0] isEqualToString:@"set_bytes"]) {
-                    [encoder setBytes: "\x00\x00\x00\x00" length: [queue[i][2] intValue] atIndex: [queue[i][3] intValue] ];
+                    uint8_t bytes[2] = { strtol([queue[i][1] substringWithRange:NSMakeRange(2, 2)].UTF8String, NULL, 16),
+                                         strtol([queue[i][1] substringWithRange:NSMakeRange(6, 2)].UTF8String, NULL, 16) };
+                    //[encoder setBytes: bytes length: 4 atIndex: [queue[i][3] intValue] ];
+                    [encoder setBytes: "\x00\x00\x00\x00" length: 4 atIndex: [queue[i][3] intValue] ];
                 }
                 if ([queue[i][0] isEqualToString:@"dispatch"]) {
                     [encoder dispatchThreadgroups: MTLSizeMake([queue[i][1] intValue], [queue[i][2] intValue], [queue[i][3] intValue]) threadsPerThreadgroup: MTLSizeMake([queue[i][4] intValue], [queue[i][5] intValue], [queue[i][6] intValue]) ];
@@ -190,6 +194,9 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 if ([queue[i][0] isEqualToString:@"wait"]) {
                     [objects[queue[i][1]] waitUntilCompleted];
                     [objects removeObjectForKey:queue[i][1]];
+                }
+                if ([queue[i][0] isEqualToString:@"new_library"]) {
+                    [objects setObject:[device newLibraryWithSource:queue[i][1] options:nil error:nil] forKey:queue[i][2]];
                 }
             }
         }

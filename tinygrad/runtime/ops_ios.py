@@ -70,8 +70,14 @@ class iosCompiler(Compiler):
   def __init__(self, device:Optional[iosDevice]):
     #if os.path.exists("tinygrad-objc-ios/f.metal"): os.remove("tinygrad-objc-ios/f.metal")
     self.device = device
+    if hasattr(self.device,"queue") == False:
+      self.device.queue = {"queue":[]}
     super().__init__("compile_ios")
   def compile(self, src:str) -> bytes:
+    name = src[src.index("void")+5:]
+    name = name[:name.index("(")]
+    self.device.queue["queue"].append(["new_library",src,name])
+    self.device.send_queue() #TODO
     #file = open("tinygrad-objc-ios/f.metal", "a")
     #file.write(src+"\n")
     #file.close()
@@ -162,7 +168,7 @@ class iosDevice(Compiled):
     self.mtl_queue = msg(self.device, "newCommandQueueWithMaxCommandBufferCount:", 1024, res=True)
     self.mtl_buffers_in_flight: List[Any] = []
 
-    super().__init__(device, iosAllocator(self), MetalRenderer(), iosCompiler(None if getenv("METAL_XCODE") else self),
+    super().__init__(device, iosAllocator(self), MetalRenderer(), iosCompiler(self if getenv("METAL_XCODE") else self),
                      functools.partial(iosProgram, self), None)
   def synchronize(self):
     for cbuf in self.mtl_buffers_in_flight:

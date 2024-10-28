@@ -11,6 +11,7 @@
 @implementation ViewController
 
 NSMutableDictionary<NSString *, id> *objects;
+id<MTLComputeCommandEncoder> encoder;
 //NSMutableDictionary<NSString *, id<MTLBuffer>> *buffers;
 //NSMutableDictionary<NSString *, NSData *> *file_data;
 //NSMutableDictionary<NSString *, id<MTLFunction>> *functions;
@@ -165,7 +166,29 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 if ([queue[i][0] isEqualToString:@"new_command_buffer"]) { //TODO this freezes it, need to clear them?
                     [objects setObject:[command_queue commandBuffer] forKey:queue[i][1]];
                 }
-                
+                if ([queue[i][0] isEqualToString:@"set_encoder"]) {
+                    encoder = [objects[queue[i][1]] computeCommandEncoder]; //do I need to init this?
+                }
+                if ([queue[i][0] isEqualToString:@"set_pipeline_state"]) {
+                    [encoder setComputePipelineState: objects[queue[i][1]]];
+                }
+                if ([queue[i][0] isEqualToString:@"set_buffer"]) {
+                    [encoder setBuffer: objects[queue[i][1]] offset: [queue[i][2] intValue] atIndex: [queue[i][3] intValue] ];
+                }
+                if ([queue[i][0] isEqualToString:@"set_bytes"]) {
+                    [encoder setBytes: "\x00\x00\x00\x00" length: [queue[i][2] intValue] atIndex: [queue[i][3] intValue] ];
+                }
+                if ([queue[i][0] isEqualToString:@"dispatch"]) {
+                    [encoder dispatchThreadgroups: MTLSizeMake([queue[i][1] intValue], [queue[i][2] intValue], [queue[i][3] intValue]) threadsPerThreadgroup: MTLSizeMake([queue[i][4] intValue], [queue[i][5] intValue], [queue[i][6] intValue]) ];
+                    [encoder endEncoding];
+                }
+                if ([queue[i][0] isEqualToString:@"commit"]) {
+                    [objects[queue[i][1]] commit];
+                }
+                if ([queue[i][0] isEqualToString:@"wait"]) {
+                    [objects[queue[i][1]] waitUntilCompleted];
+                    [objects removeObjectForKey:queue[i][1]];
+                }
             }
         }
         

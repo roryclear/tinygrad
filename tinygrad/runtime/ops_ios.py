@@ -91,13 +91,22 @@ class iosProgram:
   def __call__(self, *bufs, global_size:Tuple[int,int,int]=(1,1,1), local_size:Tuple[int,int,int]=(1,1,1), vals:Tuple[int, ...]=(), wait=False):
     command_buffer = msg(self.device.mtl_queue, "commandBuffer", res=True)
     self.device.queue["queue"].append(["new_command_buffer",command_buffer])
-    encoder = msg(command_buffer, "computeCommandEncoder", res=True)
+    encoder = "encoder"
+    #("encoder = ["+command_buffer+" computeCommandEncoder];")
+    self.device.queue["queue"].append(["set_encoder",command_buffer])
     msg(encoder, "setComputePipelineState:", self.pipeline_state)
-    for i,a in enumerate(bufs): msg(encoder, "setBuffer:offset:atIndex:", a.buf, a.offset, i)
-    for i,a in enumerate(vals,start=len(bufs)): msg(encoder, "setBytes:length:atIndex:", a.to_bytes(4, byteorder='little'), 4, i)
+    self.device.queue["queue"].append(["set_pipeline_state",self.pipeline_state])
+    for i,a in enumerate(bufs): 
+      msg(encoder, "setBuffer:offset:atIndex:", a.buf, a.offset, i)
+      self.device.queue["queue"].append(["set_buffer",a.buf,a.offset,i])
+    for i,a in enumerate(vals,start=len(bufs)): 
+      msg(encoder, "setBytes:length:atIndex:", a.to_bytes(4, byteorder='little'), 4, i)
+      self.device.queue["queue"].append(["set_bytes","PUT BYTES HERE",4,i])
     msg(encoder, "dispatchThreadgroups:threadsPerThreadgroup:", global_size, local_size)
+    self.device.queue["queue"].append(["dispatch",global_size[0],global_size[1],global_size[2],local_size[0],local_size[1],local_size[2]])
     msg(encoder, "endEncoding")
     msg(command_buffer, "commit")
+    self.device.queue["queue"].append(["commit",command_buffer])
     self.device.mtl_buffers_in_flight.append(command_buffer)
 
 class iosBuffer:
@@ -152,7 +161,9 @@ class iosDevice(Compiled):
     super().__init__(device, iosAllocator(self), MetalRenderer(), iosCompiler(None if getenv("METAL_XCODE") else self),
                      functools.partial(iosProgram, self), None)
   def synchronize(self):
-    for cbuf in self.mtl_buffers_in_flight: wait_check(cbuf)
+    for cbuf in self.mtl_buffers_in_flight:
+      self.queue["queue"].append(["wait",cbuf])
+      wait_check(cbuf)
     self.mtl_buffers_in_flight.clear()
 
   def send_queue(self):
@@ -163,6 +174,7 @@ class iosDevice(Compiled):
     print(payload)
     while status != 200:
       try:
+        #print("payload =",payload)
         response = requests.post(url, json=payload,timeout=3600)
         self.queue = {"queue":[]} #TODO: hack to not crash iOS
         if response.status_code == 200:

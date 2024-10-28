@@ -12,12 +12,15 @@
 
 NSMutableDictionary<NSString *, id<MTLBuffer>> *buffers;
 NSMutableDictionary<NSString *, NSData *> *file_data;
+NSMutableDictionary<NSString *, id<MTLFunction>> *functions;
 id<MTLDevice> device;
+id<MTLLibrary> library; //TODO use string, instead of file?
 
 - (void)viewDidLoad {
     device = MTLCreateSystemDefaultDevice();
     buffers = [[NSMutableDictionary alloc] init];
     file_data = [[NSMutableDictionary alloc] init];
+    library = [MTLCreateSystemDefaultDevice() newDefaultLibrary];
     
     //NSData *f113965bb5fe7074edc9ca25991e7ad35 = [NSData dataWithContentsOfURL:[[NSBundle mainBundle] URLForResource:@"113965bb5fe7074edc9ca25991e7ad35" withExtension:nil]]; //TODO
     [file_data setObject:[NSData dataWithContentsOfURL:[[NSBundle mainBundle] URLForResource:@"113965bb5fe7074edc9ca25991e7ad35" withExtension:nil]] forKey:@"113965bb5fe7074edc9ca25991e7ad35"]; //TODO
@@ -141,6 +144,10 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 }
                 if ([queue[i][0] isEqualToString:@"copyout"])  {
                     printBufferBytes(buffers[queue[i][1]]);
+                }
+                if ([queue[i][0] isEqualToString:@"new_function"])  {
+                    //id<MTLFunction> v163 = [library newFunctionWithName: @"r_50257_50257" ];
+                    [functions setObject:[library newFunctionWithName: queue[i][1]] forKey:queue[i][2]];
                 }
             }
         }

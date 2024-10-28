@@ -82,6 +82,7 @@ class iosProgram:
     self.device, self.name, self.lib = device, name, lib
     self.fxn = new_var()
     #add_to_objc("id<MTLFunction> "+self.fxn+" = [library newFunctionWithName: @\""+name+"\" ];",dec=True)
+    self.device.queue["queue"].append(["new_function",name,self.fxn])
     descriptor = msg("MTLComputePipelineDescriptor", "new", res=True)
     msg(descriptor, "setComputeFunction:", self.fxn)
     msg(descriptor, "setSupportIndirectCommandBuffers:", True)
@@ -162,7 +163,7 @@ class iosDevice(Compiled):
     print(payload)
     while status != 200:
       try:
-        response = requests.post(url, json=payload,timeout=30)
+        response = requests.post(url, json=payload,timeout=3600)
         self.queue = {"queue":[]} #TODO: hack to not crash iOS
         if response.status_code == 200:
             status = 200

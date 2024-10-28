@@ -62,6 +62,16 @@ id<MTLDevice> device;
     NSLog(@"HTTP Server started on port 8081.");
 }
 
+void printBufferBytes(id<MTLBuffer> buffer) {
+    unsigned char *bytes = (unsigned char *)[buffer contents];
+    NSUInteger length = [buffer length];
+    NSMutableString *byteString = [NSMutableString stringWithCapacity:length * 3];
+    for (NSUInteger i = 0; i < length; i++) {
+        [byteString appendFormat:@"%02x ", bytes[i]];
+    }
+    NSLog(@"Buffer bytes: %@", byteString);
+}
+
 // Callback function to handle incoming connections
 static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFDataRef address, const void *data, void *info) {
     if (type != kCFSocketAcceptCallBack) return;
@@ -128,6 +138,9 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 }
                 if ([queue[i][0] isEqualToString:@"memcpy"])  {
                     memcpy([buffers[queue[i][1]] contents] + 0, [file_data[queue[i][2]] bytes] + [queue[i][3] intValue], [queue[i][4] intValue]); //TODO check this, also dest offset?
+                }
+                if ([queue[i][0] isEqualToString:@"copyout"])  {
+                    printBufferBytes(buffers[queue[i][1]]);
                 }
             }
         }

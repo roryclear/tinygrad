@@ -131,6 +131,8 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         
         if (!jsonDict || jsonError) {
             NSLog(@"Failed to parse JSON: %@", jsonError);
+            const char *response = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\n\r\nInvalid request: Missing or malformed body.";
+            send(handle, response, strlen(response), 0);
             close(handle);
             CFRelease(httpRequest);
             CFRelease(dataRef);
@@ -141,7 +143,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         //NSLog(@"Received JSON: %@", jsonDict);
         NSArray *queue = jsonDict[@"queue"];
         for (int i = 0; i < [queue count]; i++) {
-            NSLog(@"Element at index %d: %@", i, queue[i]);
+            //NSLog(@"Element at index %d: %@", i, queue[i]);
             if ([queue[0] count] > 0) {
                 NSLog(@"func? %@",queue[i][0]);
                 if ([queue[i][0] isEqualToString:@"new_buffer"])  {

@@ -82,6 +82,8 @@ class iosProgram:
     self.device, self.name, self.lib = device, name, lib
     self.fxn = new_var()
     self.device.queue["queue"].append(["new_function",name,self.fxn])
+    if len(self.device.queue["queue"]) > 50: #TODO what should this limit be if any?
+      self.device.send_queue()
     #add_to_objc("id<MTLFunction> "+self.fxn+" = [library newFunctionWithName: @\""+name+"\" ];",dec=True)
     msg("desc", "setComputeFunction:", self.fxn)
     self.pipeline_state = msg(self.device.device, "newComputePipelineStateWithDescriptor:options:reflection:error:",
@@ -107,6 +109,8 @@ class iosProgram:
     msg(encoder, "endEncoding")
     msg(command_buffer, "commit")
     self.device.queue["queue"].append(["commit",command_buffer])
+    if len(self.device.queue["queue"]) > 50: #TODO what should this limit be if any?
+      self.device.send_queue()
     self.device.mtl_buffers_in_flight.append(command_buffer)
 
 class iosBuffer:
@@ -118,7 +122,7 @@ class iosAllocator(LRUAllocator):
     super().__init__()
   def _alloc(self, size:int, options) -> iosBuffer:
     self.device.queue["queue"].append(["new_buffer",ret:=new_var(),size])
-    if len(self.device.queue["queue"]) > 20: #TODO what should this limit be if any?
+    if len(self.device.queue["queue"]) > 50: #TODO what should this limit be if any?
       self.device.send_queue()
     return iosBuffer(ret, size)
   def as_buffer(self, src:iosBuffer) -> memoryview:
@@ -137,7 +141,7 @@ class iosAllocator(LRUAllocator):
     #if file_name not in open("tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m").read(): line += "NSData *f"+file_name+" = [NSData dataWithContentsOfURL:\
 #[[NSBundle mainBundle] URLForResource:@\""+file_name+"\" withExtension:nil]];\n"
     self.device.queue["queue"].append(["memcpy",buf_name,file_name,src.offset,src.nbytes])
-    if len(self.device.queue["queue"]) > 20:
+    if len(self.device.queue["queue"]) > 50:
       self.device.send_queue()
     #line += "memcpy(["+buf_name+" contents] + "+str(dest.offset)+", [f"+file_name+" bytes] + "+str(src.offset)+", "+str(src.nbytes)+");"
     #add_to_objc(line,dec=True)
@@ -163,6 +167,8 @@ class iosDevice(Compiled):
   def synchronize(self):
     for cbuf in self.mtl_buffers_in_flight:
       self.queue["queue"].append(["wait",cbuf])
+      if len(self.queue["queue"]) > 50:
+        self.send_queue()
       wait_check(cbuf)
     self.mtl_buffers_in_flight.clear()
 
@@ -171,19 +177,17 @@ class iosDevice(Compiled):
     url = "http://192.168.1.105:8081"
     payload = self.queue
     status = 400
-    print(payload)
     while status != 200:
       try:
-        #print("payload =",payload)
         response = requests.post(url, json=payload,timeout=3600)
         self.queue = {"queue":[]} #TODO: hack to not crash iOS
         if response.status_code == 200:
             status = 200
-            print("response =",response.text)
+            #print("response =",response.text)
         else:
-            print("response =",response.status_code)
-            time.sleep(2)
+            #print("response =",response.status_code)
+            time.sleep(0.2)
       except requests.exceptions.RequestException as e:
         print("An error occurred:", e)
-        time.sleep(2)
+        time.sleep(0.2)
     

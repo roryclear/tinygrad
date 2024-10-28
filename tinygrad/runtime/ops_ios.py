@@ -90,6 +90,7 @@ class iosProgram:
 
   def __call__(self, *bufs, global_size:Tuple[int,int,int]=(1,1,1), local_size:Tuple[int,int,int]=(1,1,1), vals:Tuple[int, ...]=(), wait=False):
     command_buffer = msg(self.device.mtl_queue, "commandBuffer", res=True)
+    self.device.queue["queue"].append(["new_command_buffer",command_buffer])
     encoder = msg(command_buffer, "computeCommandEncoder", res=True)
     msg(encoder, "setComputePipelineState:", self.pipeline_state)
     for i,a in enumerate(bufs): msg(encoder, "setBuffer:offset:atIndex:", a.buf, a.offset, i)

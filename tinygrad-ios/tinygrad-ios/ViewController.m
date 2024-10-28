@@ -10,32 +10,33 @@
 
 @implementation ViewController
 
-NSMutableDictionary<NSString *, id<MTLBuffer>> *buffers;
-NSMutableDictionary<NSString *, NSData *> *file_data;
-NSMutableDictionary<NSString *, id<MTLFunction>> *functions;
-NSMutableDictionary<NSString *, id<MTLComputePipelineState>> *pipeline_states;
+NSMutableDictionary<NSString *, id> *objects;
+//NSMutableDictionary<NSString *, id<MTLBuffer>> *buffers;
+//NSMutableDictionary<NSString *, NSData *> *file_data;
+//NSMutableDictionary<NSString *, id<MTLFunction>> *functions;
+//NSMutableDictionary<NSString *, id<MTLComputePipelineState>> *pipeline_states;
+//NSMutableDictionary<NSString *, id<MTLCommandBuffer>> *command_buffers;
 id<MTLDevice> device;
 id<MTLLibrary> library; //TODO use string, instead of file?
+id<MTLCommandQueue> command_queue;
 MTLComputePipelineDescriptor *desc;
 
 - (void)viewDidLoad {
     device = MTLCreateSystemDefaultDevice();
-    buffers = [[NSMutableDictionary alloc] init];
-    functions = [[NSMutableDictionary alloc] init];
-    file_data = [[NSMutableDictionary alloc] init];
-    pipeline_states = [[NSMutableDictionary alloc] init];
+    command_queue = [device newCommandQueueWithMaxCommandBufferCount: 1024 ];
     library = [MTLCreateSystemDefaultDevice() newDefaultLibrary];
     desc = [MTLComputePipelineDescriptor new];
+    objects = [[NSMutableDictionary alloc] init];
     [desc setSupportIndirectCommandBuffers: true ];
     
     //NSData *f113965bb5fe7074edc9ca25991e7ad35 = [NSData dataWithContentsOfURL:[[NSBundle mainBundle] URLForResource:@"113965bb5fe7074edc9ca25991e7ad35" withExtension:nil]]; //TODO
-    [file_data setObject:[NSData dataWithContentsOfURL:[[NSBundle mainBundle] URLForResource:@"113965bb5fe7074edc9ca25991e7ad35" withExtension:nil]] forKey:@"113965bb5fe7074edc9ca25991e7ad35"]; //TODO
+    [objects setObject:[NSData dataWithContentsOfURL:[[NSBundle mainBundle] URLForResource:@"113965bb5fe7074edc9ca25991e7ad35" withExtension:nil]] forKey:@"113965bb5fe7074edc9ca25991e7ad35"]; //TODO
     [super viewDidLoad];
     [self startHTTPServer];
 }
 
 - (void)new_buffer:(NSString *)key size:(int)size {
-    [buffers setObject:[device newBufferWithLength:size options:MTLResourceStorageModeShared] forKey:key];
+    [objects setObject:[device newBufferWithLength:size options:MTLResourceStorageModeShared] forKey:key];
 }
 
 - (void)startHTTPServer {
@@ -143,21 +144,26 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             if ([queue[0] count] > 0) {
                 NSLog(@"func? %@",queue[i][0]);
                 if ([queue[i][0] isEqualToString:@"new_buffer"])  {
-                    [buffers setObject:[device newBufferWithLength:[queue[i][2] intValue] options:MTLResourceStorageModeShared] forKey:queue[i][1]];
+                    //[buffers setObject:[device newBufferWithLength:[queue[i][2] intValue] options:MTLResourceStorageModeShared] forKey:queue[i][1]]
+                    [objects setObject:[device newBufferWithLength:[queue[i][2] intValue] options:MTLResourceStorageModeShared] forKey:queue[i][1]];
                 }
                 if ([queue[i][0] isEqualToString:@"memcpy"])  {
-                    memcpy([buffers[queue[i][1]] contents] + 0, [file_data[queue[i][2]] bytes] + [queue[i][3] intValue], [queue[i][4] intValue]); //TODO check this, also dest offset?
+                    //memcpy([buffers[queue[i][1]] contents] + 0, [file_data[queue[i][2]] bytes] + [queue[i][3] intValue], [queue[i][4] intValue]);
+                    memcpy([(id<MTLBuffer>)objects[queue[i][1]] contents] + 0, [(NSData *)objects[queue[i][2]] bytes] + [queue[i][3] intValue], [queue[i][4] intValue]); //TODO check this, also dest offset?
                 }
                 if ([queue[i][0] isEqualToString:@"copyout"])  {
-                    printBufferBytes(buffers[queue[i][1]]);
+                    printBufferBytes(objects[queue[i][1]]);
                 }
                 if ([queue[i][0] isEqualToString:@"new_function"])  {
-                    [functions setObject:[library newFunctionWithName: queue[i][1]] forKey:queue[i][2]];
+                    [objects setObject:[library newFunctionWithName: queue[i][1]] forKey:queue[i][2]];
                 }
                 if ([queue[i][0] isEqualToString:@"new_pipeline_state"])  {
-                    [desc setComputeFunction: functions[queue[i][1]]];
+                    [desc setComputeFunction: objects[queue[i][1]]];
                     NSError *error = nil;
-                    [pipeline_states setObject:[device newComputePipelineStateWithDescriptor: desc options: 0 reflection: Nil error: &error ] forKey:queue[i][2]];
+                    [objects setObject:[device newComputePipelineStateWithDescriptor: desc options: 0 reflection: Nil error: &error ] forKey:queue[i][2]];
+                }
+                if ([queue[i][0] isEqualToString:@"new_command_buffer"]) { //TODO this freezes it, need to clear them?
+                    [objects setObject:[command_queue commandBuffer] forKey:queue[i][1]];
                 }
                 
             }

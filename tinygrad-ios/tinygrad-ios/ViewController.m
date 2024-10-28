@@ -13,14 +13,20 @@
 NSMutableDictionary<NSString *, id<MTLBuffer>> *buffers;
 NSMutableDictionary<NSString *, NSData *> *file_data;
 NSMutableDictionary<NSString *, id<MTLFunction>> *functions;
+NSMutableDictionary<NSString *, id<MTLComputePipelineState>> *pipeline_states;
 id<MTLDevice> device;
 id<MTLLibrary> library; //TODO use string, instead of file?
+MTLComputePipelineDescriptor *desc;
 
 - (void)viewDidLoad {
     device = MTLCreateSystemDefaultDevice();
     buffers = [[NSMutableDictionary alloc] init];
+    functions = [[NSMutableDictionary alloc] init];
     file_data = [[NSMutableDictionary alloc] init];
+    pipeline_states = [[NSMutableDictionary alloc] init];
     library = [MTLCreateSystemDefaultDevice() newDefaultLibrary];
+    desc = [MTLComputePipelineDescriptor new];
+    [desc setSupportIndirectCommandBuffers: true ];
     
     //NSData *f113965bb5fe7074edc9ca25991e7ad35 = [NSData dataWithContentsOfURL:[[NSBundle mainBundle] URLForResource:@"113965bb5fe7074edc9ca25991e7ad35" withExtension:nil]]; //TODO
     [file_data setObject:[NSData dataWithContentsOfURL:[[NSBundle mainBundle] URLForResource:@"113965bb5fe7074edc9ca25991e7ad35" withExtension:nil]] forKey:@"113965bb5fe7074edc9ca25991e7ad35"]; //TODO
@@ -130,7 +136,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         }
         
         // Log the received JSON dictionary
-        NSLog(@"Received JSON: %@", jsonDict);
+        //NSLog(@"Received JSON: %@", jsonDict);
         NSArray *queue = jsonDict[@"queue"];
         for (int i = 0; i < [queue count]; i++) {
             NSLog(@"Element at index %d: %@", i, queue[i]);
@@ -146,9 +152,14 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                     printBufferBytes(buffers[queue[i][1]]);
                 }
                 if ([queue[i][0] isEqualToString:@"new_function"])  {
-                    //id<MTLFunction> v163 = [library newFunctionWithName: @"r_50257_50257" ];
                     [functions setObject:[library newFunctionWithName: queue[i][1]] forKey:queue[i][2]];
                 }
+                if ([queue[i][0] isEqualToString:@"new_pipeline_state"])  {
+                    [desc setComputeFunction: functions[queue[i][1]]];
+                    NSError *error = nil;
+                    [pipeline_states setObject:[device newComputePipelineStateWithDescriptor: desc options: 0 reflection: Nil error: &error ] forKey:queue[i][2]];
+                }
+                
             }
         }
         

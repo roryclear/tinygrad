@@ -78,16 +78,15 @@ class iosCompiler(Compiler):
     return
 
 class iosProgram:
-  def __init__(self, device:iosDevice, name:str, lib:bytes):
+  def __init__(self, device:iosDevice, name:str, lib:bytes):  
     self.device, self.name, self.lib = device, name, lib
     self.fxn = new_var()
-    #add_to_objc("id<MTLFunction> "+self.fxn+" = [library newFunctionWithName: @\""+name+"\" ];",dec=True)
     self.device.queue["queue"].append(["new_function",name,self.fxn])
-    descriptor = msg("MTLComputePipelineDescriptor", "new", res=True)
-    msg(descriptor, "setComputeFunction:", self.fxn)
-    msg(descriptor, "setSupportIndirectCommandBuffers:", True)
+    #add_to_objc("id<MTLFunction> "+self.fxn+" = [library newFunctionWithName: @\""+name+"\" ];",dec=True)
+    msg("desc", "setComputeFunction:", self.fxn)
     self.pipeline_state = msg(self.device.device, "newComputePipelineStateWithDescriptor:options:reflection:error:",
-      descriptor, MTLPipelineOption.MTLPipelineOptionNone, None, "&error", res=True)
+      "desc", MTLPipelineOption.MTLPipelineOptionNone, None, "&error", res=True)
+    self.device.queue["queue"].append(["new_pipeline_state",self.fxn,self.pipeline_state])
 
   def __call__(self, *bufs, global_size:Tuple[int,int,int]=(1,1,1), local_size:Tuple[int,int,int]=(1,1,1), vals:Tuple[int, ...]=(), wait=False):
     command_buffer = msg(self.device.mtl_queue, "commandBuffer", res=True)

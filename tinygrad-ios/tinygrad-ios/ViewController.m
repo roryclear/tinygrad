@@ -16,6 +16,7 @@ id<MTLDevice> device;
 id<MTLLibrary> library; //TODO use string, instead of file?
 id<MTLCommandQueue> command_queue;
 MTLComputePipelineDescriptor *desc;
+NSMutableArray *queue;
 
 - (void)viewDidLoad {
     device = MTLCreateSystemDefaultDevice();
@@ -24,6 +25,7 @@ MTLComputePipelineDescriptor *desc;
     desc = [MTLComputePipelineDescriptor new];
     objects = [[NSMutableDictionary alloc] init];
     [desc setSupportIndirectCommandBuffers: true ];
+    queue = [[NSMutableArray alloc] init];
     
     [objects setObject:[NSData dataWithContentsOfURL:[[NSBundle mainBundle] URLForResource:@"113965bb5fe7074edc9ca25991e7ad35" withExtension:nil]] forKey:@"113965bb5fe7074edc9ca25991e7ad35"]; //TODO
     [super viewDidLoad];
@@ -143,9 +145,10 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             return;
         }
         
-        NSArray *queue = jsonDict[@"queue"];
-        for (int i = 0; i < [queue count]; i++) {
-            if ([queue[0] count] > 0) {
+        NSArray *req_queue = jsonDict[@"queue"];
+        [queue addObjectsFromArray:req_queue];
+        if([[queue lastObject][0] isEqualToString:@"copyout"]) {
+            for (int i = 0; i < [queue count]; i++) {
                 if ([queue[i][0] isEqualToString:@"new_buffer"])  {
                     [objects setObject:[device newBufferWithLength:[queue[i][2] intValue] options:MTLResourceStorageModeShared] forKey:queue[i][1]];
                 }
@@ -153,9 +156,6 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                     memcpy([(id<MTLBuffer>)objects[queue[i][1]] contents] + 0, [(NSData *)objects[queue[i][2]] bytes] + [queue[i][3] intValue], [queue[i][4] intValue]); //TODO check this, also dest offset?
                 }
                 if ([queue[i][0] isEqualToString:@"copyout"])  {
-                    NSLog(@"%d", *((int32_t *)[(id<MTLBuffer>)objects[queue[i][1]] contents]));
-                    NSLog(@"%f", *((float *)[(id<MTLBuffer>)objects[queue[i][1]] contents]));
-                    
                     char *bytes = charArrayFromMTLBuffer(objects[queue[i][1]]);
                     char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
                     size_t totalLength = strlen(response) + strlen(bytes) + 1;
@@ -164,6 +164,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                     strcat(fullResponse, bytes);
                     send(handle, fullResponse, strlen(fullResponse), 0);
                     close(handle);
+                    [queue removeAllObjects];
                     return;
                 }
                 if ([queue[i][0] isEqualToString:@"new_function"])  {

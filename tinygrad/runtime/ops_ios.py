@@ -176,7 +176,7 @@ class iosDevice(Compiled):
             if len(response.text) > 0:
               return response.text
         else:
-            time.sleep(0.2)
+            time.sleep(0.1)
       except requests.exceptions.RequestException as e:
         #print("An error occurred:", e)
         time.sleep(0.2)

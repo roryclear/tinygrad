@@ -40,6 +40,22 @@ MTLComputePipelineDescriptor *desc;
     [objects setObject:[device newBufferWithLength:size options:MTLResourceStorageModeShared] forKey:key];
 }
 
+char *charArrayFromMTLBuffer(id<MTLBuffer> buffer) {
+    uint8_t *bytes = (uint8_t *)buffer.contents;
+    NSUInteger length = buffer.length;
+    char *hexString = malloc(length * 3);
+    if (hexString == NULL) return NULL;
+    char *p = hexString;
+    for (NSUInteger i = 0; i < length; i++) {
+        p += sprintf(p, "%02x", bytes[i]);
+        if (i < length - 1) {
+            *p++ = ' ';
+        }
+    }
+    *p = '\0';
+    return hexString;
+}
+
 - (void)startHTTPServer {
     // Create a socket
     self.socket = CFSocketCreate(NULL, PF_INET, SOCK_STREAM, IPPROTO_TCP, kCFSocketAcceptCallBack, AcceptCallback, NULL);
@@ -155,9 +171,18 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                     memcpy([(id<MTLBuffer>)objects[queue[i][1]] contents] + 0, [(NSData *)objects[queue[i][2]] bytes] + [queue[i][3] intValue], [queue[i][4] intValue]); //TODO check this, also dest offset?
                 }
                 if ([queue[i][0] isEqualToString:@"copyout"])  {
-                    //printBufferBytes(objects[queue[i][1]]);
                     NSLog(@"%d", *((int32_t *)[(id<MTLBuffer>)objects[queue[i][1]] contents]));
                     NSLog(@"%f", *((float *)[(id<MTLBuffer>)objects[queue[i][1]] contents]));
+                    
+                    char *bytes = charArrayFromMTLBuffer(objects[queue[i][1]]);
+                    char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
+                    size_t totalLength = strlen(response) + strlen(bytes) + 1;
+                    char *fullResponse = malloc(totalLength);
+                    strcpy(fullResponse, response);
+                    strcat(fullResponse, bytes);
+                    send(handle, fullResponse, strlen(fullResponse), 0);
+                    close(handle);
+                    return;
                 }
                 if ([queue[i][0] isEqualToString:@"new_function"])  {
                     [objects setObject:[objects[queue[i][1]] newFunctionWithName: queue[i][1]] forKey:queue[i][2]]; //TODO don't need this structure?
@@ -217,7 +242,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
     }
     
     // Simple response for any request
-    const char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello from iPhone!";
+    const char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
     send(handle, response, strlen(response), 0);
     close(handle);
 }

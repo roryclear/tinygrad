@@ -79,6 +79,7 @@ char *charArrayFromMTLBuffer(id<MTLBuffer> buffer) {
         NSLog(@"Failed to bind socket to address.");
         CFRelease(self.socket);
         self.socket = NULL;
+        exit(0); //TODO, add ui or retry
         return;
     }
     CFRelease(addressData);
@@ -134,6 +135,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         NSDictionary *jsonDict = [NSJSONSerialization JSONObjectWithData:bodyData options:0 error:&jsonError];
         
         if (!jsonDict || jsonError) {
+            //NSLog(@"json error");
             const char *response = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\n\r\nInvalid request: Missing or malformed body.";
             send(handle, response, strlen(response), 0);
             close(handle);

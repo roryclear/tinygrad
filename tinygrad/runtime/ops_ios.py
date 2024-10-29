@@ -22,7 +22,7 @@ class iosCompiler(Compiler):
     name = src[src.index("void")+5:]
     name = name[:name.index("(")]
     self.device.queue["queue"].append(["new_library",src,name])
-    self.device.send_queue() #TODO remove
+    self.device.send_queue()
     return
 
 class iosProgram:
@@ -57,7 +57,7 @@ class iosAllocator(LRUAllocator):
     super().__init__()
   def _alloc(self, size:int, options) -> iosBuffer:
     self.device.queue["queue"].append(["new_buffer",ret:=new_var(),size])
-    if len(self.device.queue["queue"]) > 50: #TODO remove
+    if len(self.device.queue["queue"]) > 50:
       self.device.send_queue()
     return iosBuffer(ret, size)
   def as_buffer(self, src:iosBuffer) -> memoryview:

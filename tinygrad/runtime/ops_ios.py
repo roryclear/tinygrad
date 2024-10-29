@@ -6,23 +6,6 @@ from tinygrad.device import Compiled, Compiler, LRUAllocator
 from tinygrad.renderer.cstyle import MetalRenderer
 import requests
 import time
-import struct
-
-class MTLResourceOptions:
-  MTLResourceCPUCacheModeDefaultCache = 0
-  MTLResourceStorageModeShared = 0 << 4
-
-class MTLPipelineOption:
-  MTLPipelineOptionNone = 0
-
-def objc_name(x):
-  if x == None: return "Nil"
-  if type(x) == bool: return str(x).lower()
-  if type(x) == str: return x
-  if type(x) == int: return str(x)
-  if type(x) == tuple:
-    return "MTLSizeMake" + str(x)
-  return str(x).replace("b", "").replace("'", "\"") #bytes
 
 var_num = -1
 def new_var():
@@ -96,7 +79,7 @@ class iosAllocator(LRUAllocator):
       self.device.send_queue()
   def copyin(self, dest:iosBuffer, src:memoryview):
     formatted_hex = ' '.join(f'{b:02x}' for b in src)
-    self.device.queue["queue"].append(["copy_in",formatted_hex,objc_name(dest.buf)])
+    self.device.queue["queue"].append(["copy_in",formatted_hex,dest.buf])
   def copyout(self, dest:memoryview, src:iosBuffer):
     self.device.synchronize()
     self.device.queue["queue"].append(["copyout",str(src._buf.buf)])

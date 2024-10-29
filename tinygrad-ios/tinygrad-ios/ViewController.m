@@ -71,7 +71,7 @@ char *charArrayFromMTLBuffer(id<MTLBuffer> buffer) {
     memset(&address, 0, sizeof(address));
     address.sin_len = sizeof(address);
     address.sin_family = AF_INET;
-    address.sin_port = htons(8081);  // Port 8080
+    address.sin_port = htons(8081);  //use same port on tinygrad
     address.sin_addr.s_addr = INADDR_ANY;
     
     CFDataRef addressData = CFDataCreate(NULL, (const UInt8 *)&address, sizeof(address));

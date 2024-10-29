@@ -22,7 +22,7 @@ class iosCompiler(Compiler):
     name = src[src.index("void")+5:]
     name = name[:name.index("(")]
     self.device.queue["queue"].append(["new_library",src,name])
-    self.device.send_queue() #TODO
+    self.device.send_queue() #TODO remove
     return
 
 class iosProgram:
@@ -30,8 +30,6 @@ class iosProgram:
     self.device, self.name, self.lib = device, name, lib
     self.fxn = new_var()
     self.device.queue["queue"].append(["new_function",name,self.fxn])
-    if len(self.device.queue["queue"]) > 50: #TODO what should this limit be if any?
-      self.device.send_queue()
     self.pipeline_state = new_var()
     self.device.queue["queue"].append(["new_pipeline_state",self.fxn,self.pipeline_state])
 
@@ -46,7 +44,7 @@ class iosProgram:
       self.device.queue["queue"].append(["set_bytes",' '.join(f"{(a >> (i * 8)) & 0xff:02x}" for i in range(4)),4,i]) #TODO
     self.device.queue["queue"].append(["dispatch",global_size[0],global_size[1],global_size[2],local_size[0],local_size[1],local_size[2]])
     self.device.queue["queue"].append(["commit",command_buffer])
-    if len(self.device.queue["queue"]) > 50: #TODO what should this limit be if any?
+    if len(self.device.queue["queue"]) > 50: #TODO remove
       self.device.send_queue()
     self.device.mtl_buffers_in_flight.append(command_buffer)
 
@@ -59,7 +57,7 @@ class iosAllocator(LRUAllocator):
     super().__init__()
   def _alloc(self, size:int, options) -> iosBuffer:
     self.device.queue["queue"].append(["new_buffer",ret:=new_var(),size])
-    if len(self.device.queue["queue"]) > 50: #TODO what should this limit be if any?
+    if len(self.device.queue["queue"]) > 50: #TODO remove
       self.device.send_queue()
     return iosBuffer(ret, size)
   def as_buffer(self, src:iosBuffer) -> memoryview:
@@ -75,8 +73,6 @@ class iosAllocator(LRUAllocator):
     file_name = file_name[::-1]
     buf_name = str(dest._buf.buf)
     self.device.queue["queue"].append(["memcpy",buf_name,file_name,src.offset,src.nbytes])
-    if len(self.device.queue["queue"]) > 50:
-      self.device.send_queue()
   def copyin(self, dest:iosBuffer, src:memoryview):
     formatted_hex = ' '.join(f'{b:02x}' for b in src)
     self.device.queue["queue"].append(["copy_in",formatted_hex,dest.buf])
@@ -100,13 +96,10 @@ class iosDevice(Compiled):
   def synchronize(self):
     for cbuf in self.mtl_buffers_in_flight:
       self.queue["queue"].append(["wait",cbuf])
-      if len(self.queue["queue"]) > 50:
-        self.send_queue()
     self.mtl_buffers_in_flight.clear()
 
   def send_queue(self):
-    # Replace 'your-iphone-ip' with your iPhone's IP address
-    url = "http://192.168.1.105:8081"
+    url = "http://192.168.1.105:8081" #your iOS device's local IP
     payload = self.queue
     status = 400
     while status != 200:

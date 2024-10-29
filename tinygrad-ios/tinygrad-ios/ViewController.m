@@ -34,6 +34,17 @@ MTLComputePipelineDescriptor *desc;
     [objects setObject:[device newBufferWithLength:size options:MTLResourceStorageModeShared] forKey:key];
 }
 
+uint8_t *convertNSStringToBytes(NSString *hexString) {
+    uint8_t *bytes = malloc(4 * sizeof(uint8_t));
+    NSArray<NSString *> *components = [hexString componentsSeparatedByString:@" "];
+    for (NSInteger i = 0; i < components.count; i++) {
+        unsigned int byteValue;
+        [[NSScanner scannerWithString:components[i]] scanHexInt:&byteValue];
+        bytes[i] = (uint8_t)byteValue;
+    }
+    return bytes;
+}
+
 char *charArrayFromMTLBuffer(id<MTLBuffer> buffer) {
     uint8_t *bytes = (uint8_t *)buffer.contents;
     NSUInteger length = buffer.length;
@@ -176,10 +187,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                     [encoder setBuffer: objects[queue[i][1]] offset: [queue[i][2] intValue] atIndex: [queue[i][3] intValue] ];
                 }
                 if ([queue[i][0] isEqualToString:@"set_bytes"]) {
-                    uint8_t bytes[2] = { strtol([queue[i][1] substringWithRange:NSMakeRange(2, 2)].UTF8String, NULL, 16),
-                                         strtol([queue[i][1] substringWithRange:NSMakeRange(6, 2)].UTF8String, NULL, 16) };
-                    //[encoder setBytes: bytes length: 4 atIndex: [queue[i][3] intValue] ];
-                    [encoder setBytes: bytes length: 4 atIndex: [queue[i][3] intValue] ];
+                    [encoder setBytes: convertNSStringToBytes(queue[i][1]) length: 4 atIndex: [queue[i][3] intValue] ];
                 }
                 if ([queue[i][0] isEqualToString:@"dispatch"]) {
                     [encoder dispatchThreadgroups: MTLSizeMake([queue[i][1] intValue], [queue[i][2] intValue], [queue[i][3] intValue]) threadsPerThreadgroup: MTLSizeMake([queue[i][4] intValue], [queue[i][5] intValue], [queue[i][6] intValue]) ];

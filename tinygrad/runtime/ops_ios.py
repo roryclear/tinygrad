@@ -95,7 +95,7 @@ class iosProgram:
     for i,a in enumerate(bufs): 
       self.device.queue["queue"].append(["set_buffer",a.buf,a.offset,i])
     for i,a in enumerate(vals,start=len(bufs)):
-      self.device.queue["queue"].append(["set_bytes","PUT BYTES HERE",4,i]) #TODO
+      self.device.queue["queue"].append(["set_bytes",' '.join(f"{(a >> (i * 8)) & 0xff:02x}" for i in range(4)),4,i]) #TODO
     self.device.queue["queue"].append(["dispatch",global_size[0],global_size[1],global_size[2],local_size[0],local_size[1],local_size[2]])
     self.device.queue["queue"].append(["commit",command_buffer])
     if len(self.device.queue["queue"]) > 50: #TODO what should this limit be if any?

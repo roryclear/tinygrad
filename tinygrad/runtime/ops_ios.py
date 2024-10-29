@@ -6,6 +6,7 @@ from tinygrad.device import Compiled, Compiler, LRUAllocator
 from tinygrad.renderer.cstyle import MetalRenderer
 import requests
 import time
+import struct
 
 class MTLResourceOptions:
   MTLResourceCPUCacheModeDefaultCache = 0
@@ -134,10 +135,10 @@ class iosAllocator(LRUAllocator):
   def as_buffer(self, src:iosBuffer) -> memoryview:
     self.device.synchronize()
     var = new_var()
-    self.device.queue["queue"].append(["copyout",str(src._buf.buf)])
-    self.device.send_queue()
-    #add_to_objc("void *"+var+" = malloc(["+str(src._buf.buf)+" length]); memcpy("+var+", ["+str(src._buf.buf)+" contents], ["+str(src._buf.buf)+" length]);")
-    return iosBuffer(var,src.size)
+    self.device.queue["queue"].append(["copyout",str(src.buf)])
+    byte_str = self.device.send_queue()
+    byte_values = bytearray(int(b, 16) for b in byte_str.split())
+    return memoryview(byte_values)
   def copy_from_disk(self,dest,src):
     file_name = src.device[::-1]
     file_name = file_name[:file_name.index("/")]
@@ -153,11 +154,14 @@ class iosAllocator(LRUAllocator):
     #add_to_objc(line,dec=True)
   def copyin(self, dest:iosBuffer, src:memoryview):
     formatted_hex = ' '.join(f'{b:02x}' for b in src)
-    print(formatted_hex)
     self.device.queue["queue"].append(["copy_in",formatted_hex,objc_name(dest.buf)])
     #add_to_objc("memcpy(["+objc_name(dest.buf)+" contents], (uint8_t[])"+formatted_bytes+", "+str(src.nbytes)+");")
   def copyout(self, dest:memoryview, src:iosBuffer):
-    return self.as_buffer(src)
+    self.device.synchronize()
+    self.device.queue["queue"].append(["copyout",str(src._buf.buf)])
+    byte_str = self.device.send_queue()
+    byte_values = bytes(int(b, 16) for b in byte_str.split())
+    dest[:] = memoryview(byte_values)
   def offset(self, buf:iosBuffer, size:int, offset:int): return iosBuffer(buf.buf, size, offset)
 
 class iosDevice(Compiled):
@@ -191,9 +195,9 @@ class iosDevice(Compiled):
         self.queue = {"queue":[]} #TODO: hack to not crash iOS
         if response.status_code == 200:
             status = 200
-            #print("response =",response.text)
+            if len(response.text) > 0:
+              return response.text
         else:
-            #print("response =",response.status_code)
             time.sleep(0.2)
       except requests.exceptions.RequestException as e:
         print("An error occurred:", e)

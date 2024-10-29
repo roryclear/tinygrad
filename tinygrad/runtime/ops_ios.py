@@ -64,12 +64,8 @@ def msg(ptr, selector: str, /, *args: Any, res=False):
   #add_to_objc(line,dec)
   return ret
 
-def wait_check(cbuf: Any):
-  msg(cbuf, "waitUntilCompleted")
-
 class iosCompiler(Compiler):
   def __init__(self, device:Optional[iosDevice]):
-    #if os.path.exists("tinygrad-objc-ios/f.metal"): os.remove("tinygrad-objc-ios/f.metal")
     self.device = device
     if hasattr(self.device,"queue") == False:
       self.device.queue = {"queue":[]}
@@ -79,9 +75,6 @@ class iosCompiler(Compiler):
     name = name[:name.index("(")]
     self.device.queue["queue"].append(["new_library",src,name])
     self.device.send_queue() #TODO
-    #file = open("tinygrad-objc-ios/f.metal", "a")
-    #file.write(src+"\n")
-    #file.close()
     return
 
 class iosProgram:
@@ -91,30 +84,19 @@ class iosProgram:
     self.device.queue["queue"].append(["new_function",name,self.fxn])
     if len(self.device.queue["queue"]) > 50: #TODO what should this limit be if any?
       self.device.send_queue()
-    #add_to_objc("id<MTLFunction> "+self.fxn+" = [library newFunctionWithName: @\""+name+"\" ];",dec=True)
-    msg("desc", "setComputeFunction:", self.fxn)
-    self.pipeline_state = msg(self.device.device, "newComputePipelineStateWithDescriptor:options:reflection:error:",
-      "desc", MTLPipelineOption.MTLPipelineOptionNone, None, "&error", res=True)
+    self.pipeline_state = new_var()
     self.device.queue["queue"].append(["new_pipeline_state",self.fxn,self.pipeline_state])
 
   def __call__(self, *bufs, global_size:Tuple[int,int,int]=(1,1,1), local_size:Tuple[int,int,int]=(1,1,1), vals:Tuple[int, ...]=(), wait=False):
-    command_buffer = msg(self.device.mtl_queue, "commandBuffer", res=True)
+    command_buffer = new_var()
     self.device.queue["queue"].append(["new_command_buffer",command_buffer])
-    encoder = "encoder"
-    #("encoder = ["+command_buffer+" computeCommandEncoder];")
     self.device.queue["queue"].append(["set_encoder",command_buffer])
-    msg(encoder, "setComputePipelineState:", self.pipeline_state)
     self.device.queue["queue"].append(["set_pipeline_state",self.pipeline_state])
     for i,a in enumerate(bufs): 
-      msg(encoder, "setBuffer:offset:atIndex:", a.buf, a.offset, i)
       self.device.queue["queue"].append(["set_buffer",a.buf,a.offset,i])
-    for i,a in enumerate(vals,start=len(bufs)): 
-      msg(encoder, "setBytes:length:atIndex:", a.to_bytes(4, byteorder='little'), 4, i)
-      self.device.queue["queue"].append(["set_bytes","PUT BYTES HERE",4,i])
-    msg(encoder, "dispatchThreadgroups:threadsPerThreadgroup:", global_size, local_size)
+    for i,a in enumerate(vals,start=len(bufs)):
+      self.device.queue["queue"].append(["set_bytes","PUT BYTES HERE",4,i]) #TODO
     self.device.queue["queue"].append(["dispatch",global_size[0],global_size[1],global_size[2],local_size[0],local_size[1],local_size[2]])
-    msg(encoder, "endEncoding")
-    msg(command_buffer, "commit")
     self.device.queue["queue"].append(["commit",command_buffer])
     if len(self.device.queue["queue"]) > 50: #TODO what should this limit be if any?
       self.device.send_queue()
@@ -168,10 +150,7 @@ class iosDevice(Compiled):
   def __init__(self, device:str):
     self.queue = {"queue":[]} #todo
     self.device = new_var()
-    #with open('tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m', 'w') as dest,\
-    #open('tinygrad-objc-ios/tinygrad-objc-ios/templateViewController.m', 'r') as src: dest.write(src.read())
-    #add_to_objc("id<MTLDevice> "+objc_name(self.device)+" = MTLCreateSystemDefaultDevice();",dec=True)
-    self.mtl_queue = msg(self.device, "newCommandQueueWithMaxCommandBufferCount:", 1024, res=True)
+    self.mtl_queue = new_var()
     self.mtl_buffers_in_flight: List[Any] = []
 
     super().__init__(device, iosAllocator(self), MetalRenderer(), iosCompiler(self if getenv("METAL_XCODE") else self),
@@ -181,7 +160,6 @@ class iosDevice(Compiled):
       self.queue["queue"].append(["wait",cbuf])
       if len(self.queue["queue"]) > 50:
         self.send_queue()
-      wait_check(cbuf)
     self.mtl_buffers_in_flight.clear()
 
   def send_queue(self):

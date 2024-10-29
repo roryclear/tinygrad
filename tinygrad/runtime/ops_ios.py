@@ -24,45 +24,10 @@ def objc_name(x):
     return "MTLSizeMake" + str(x)
   return str(x).replace("b", "").replace("'", "\"") #bytes
 
-objc_types = {"newCommandQueueWithMaxCommandBufferCount:":"id<MTLCommandQueue> ","newBufferWithLength:options:":"id<MTLBuffer> ",
-              "newComputePipelineStateWithDescriptor:options:reflection:error:":"id<MTLComputePipelineState> ",
-              "commandBuffer":"id<MTLCommandBuffer> ","computeCommandEncoder":"id<MTLComputeCommandEncoder> "}
-
-decs = {"newBufferWithLength:options:","newCommandQueueWithMaxCommandBufferCount:"}
-
-def add_to_objc(line,dec=False):
-  with open("tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m", "r") as file:
-    marker = "//VARS" if dec else "//CODE"
-    lines = file.readlines()
-    for i,l in enumerate(lines):
-      if marker in l:
-        lines.insert(i, line + "\n")
-        with open("tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m", "w") as file:
-          file.writelines(lines)
-          break
-
 var_num = -1
 def new_var():
   global var_num
   return "v" + str(var_num:=var_num+1)
-
-def msg(ptr, selector: str, /, *args: Any, res=False):
-  ret = None
-  dec = selector in decs
-  if selector == "new":
-    #add_to_objc(objc_name(ptr) + " *"+(ret:=new_var())+" = ["+objc_name(ptr)+" new];",dec)
-    ret = new_var()
-    return ret
-  line = ""
-  labels = selector.split(":") if ":" in selector else [selector]
-  if res: line += objc_types[selector] + (ret := new_var()) + " = "
-  line += "[" + objc_name(ptr) + " "
-  for i,a in enumerate(labels):
-    line += a
-    if i < len(args): line += ": " + objc_name(args[i]) + " "
-  line += "];"
-  #add_to_objc(line,dec)
-  return ret
 
 class iosCompiler(Compiler):
   def __init__(self, device:Optional[iosDevice]):
@@ -126,18 +91,12 @@ class iosAllocator(LRUAllocator):
     file_name = file_name[:file_name.index("/")]
     file_name = file_name[::-1]
     buf_name = str(dest._buf.buf)
-    line = ""
-    #if file_name not in open("tinygrad-objc-ios/tinygrad-objc-ios/ViewController.m").read(): line += "NSData *f"+file_name+" = [NSData dataWithContentsOfURL:\
-#[[NSBundle mainBundle] URLForResource:@\""+file_name+"\" withExtension:nil]];\n"
     self.device.queue["queue"].append(["memcpy",buf_name,file_name,src.offset,src.nbytes])
     if len(self.device.queue["queue"]) > 50:
       self.device.send_queue()
-    #line += "memcpy(["+buf_name+" contents] + "+str(dest.offset)+", [f"+file_name+" bytes] + "+str(src.offset)+", "+str(src.nbytes)+");"
-    #add_to_objc(line,dec=True)
   def copyin(self, dest:iosBuffer, src:memoryview):
     formatted_hex = ' '.join(f'{b:02x}' for b in src)
     self.device.queue["queue"].append(["copy_in",formatted_hex,objc_name(dest.buf)])
-    #add_to_objc("memcpy(["+objc_name(dest.buf)+" contents], (uint8_t[])"+formatted_bytes+", "+str(src.nbytes)+");")
   def copyout(self, dest:memoryview, src:iosBuffer):
     self.device.synchronize()
     self.device.queue["queue"].append(["copyout",str(src._buf.buf)])

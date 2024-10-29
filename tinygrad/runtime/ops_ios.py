@@ -200,6 +200,6 @@ class iosDevice(Compiled):
         else:
             time.sleep(0.2)
       except requests.exceptions.RequestException as e:
-        print("An error occurred:", e)
+        #print("An error occurred:", e)
         time.sleep(0.2)
     

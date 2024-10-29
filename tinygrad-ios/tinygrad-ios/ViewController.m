@@ -157,6 +157,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 if ([queue[i][0] isEqualToString:@"copyout"])  {
                     //printBufferBytes(objects[queue[i][1]]);
                     NSLog(@"%d", *((int32_t *)[(id<MTLBuffer>)objects[queue[i][1]] contents]));
+                    NSLog(@"%f", *((float *)[(id<MTLBuffer>)objects[queue[i][1]] contents]));
                 }
                 if ([queue[i][0] isEqualToString:@"new_function"])  {
                     [objects setObject:[objects[queue[i][1]] newFunctionWithName: queue[i][1]] forKey:queue[i][2]]; //TODO don't need this structure?
@@ -182,7 +183,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                     uint8_t bytes[2] = { strtol([queue[i][1] substringWithRange:NSMakeRange(2, 2)].UTF8String, NULL, 16),
                                          strtol([queue[i][1] substringWithRange:NSMakeRange(6, 2)].UTF8String, NULL, 16) };
                     //[encoder setBytes: bytes length: 4 atIndex: [queue[i][3] intValue] ];
-                    [encoder setBytes: "\x00\x00\x00\x00" length: 4 atIndex: [queue[i][3] intValue] ];
+                    [encoder setBytes: bytes length: 4 atIndex: [queue[i][3] intValue] ];
                 }
                 if ([queue[i][0] isEqualToString:@"dispatch"]) {
                     [encoder dispatchThreadgroups: MTLSizeMake([queue[i][1] intValue], [queue[i][2] intValue], [queue[i][3] intValue]) threadsPerThreadgroup: MTLSizeMake([queue[i][4] intValue], [queue[i][5] intValue], [queue[i][6] intValue]) ];
@@ -198,10 +199,21 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 if ([queue[i][0] isEqualToString:@"new_library"]) {
                     [objects setObject:[device newLibraryWithSource:queue[i][1] options:nil error:nil] forKey:queue[i][2]];
                 }
+                if ([queue[i][0] isEqualToString:@"copy_in"]) {
+                    //TODO don't send bytes as a string
+                    NSArray<NSString *> *hexArray = [queue[i][1] componentsSeparatedByString:@" "];
+                    NSUInteger length = hexArray.count;
+                    uint8_t *bytes = malloc(length);
+                    for (NSUInteger i = 0; i < length; i++) {
+                        unsigned int byteValue;
+                        [[NSScanner scannerWithString:hexArray[i]] scanHexInt:&byteValue];
+                        bytes[i] = (uint8_t)byteValue;
+                    }
+                    NSData *data = [NSData dataWithBytesNoCopy:bytes length:length freeWhenDone:YES];
+                    memcpy([(id<MTLBuffer>)objects[queue[i][2]] contents], [data bytes], [data length]);
+                }
             }
         }
-        
-        
     }
     
     // Simple response for any request

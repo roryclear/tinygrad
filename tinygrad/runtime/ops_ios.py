@@ -152,7 +152,9 @@ class iosAllocator(LRUAllocator):
     #line += "memcpy(["+buf_name+" contents] + "+str(dest.offset)+", [f"+file_name+" bytes] + "+str(src.offset)+", "+str(src.nbytes)+");"
     #add_to_objc(line,dec=True)
   def copyin(self, dest:iosBuffer, src:memoryview):
-    formatted_bytes = ("{"+ ", ".join([f"0x{byte:02x}" for byte in src.tobytes()])+ "}")
+    formatted_hex = ' '.join(f'{b:02x}' for b in src)
+    print(formatted_hex)
+    self.device.queue["queue"].append(["copy_in",formatted_hex,objc_name(dest.buf)])
     #add_to_objc("memcpy(["+objc_name(dest.buf)+" contents], (uint8_t[])"+formatted_bytes+", "+str(src.nbytes)+");")
   def copyout(self, dest:memoryview, src:iosBuffer):
     return self.as_buffer(src)

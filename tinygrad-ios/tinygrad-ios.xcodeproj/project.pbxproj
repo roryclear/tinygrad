@@ -14,6 +14,7 @@
 		BEB24A102CCE95EB006E5750 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BEB24A0F2CCE95EB006E5750 /* Assets.xcassets */; };
 		BEB24A132CCE95EB006E5750 /* Base in Resources */ = {isa = PBXBuildFile; fileRef = BEB24A122CCE95EB006E5750 /* Base */; };
 		BEB24A162CCE95EB006E5750 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = BEB24A152CCE95EB006E5750 /* main.m */; };
+		BEB24A1D2CCEE55B006E5750 /* 113965bb5fe7074edc9ca25991e7ad35 in Resources */ = {isa = PBXBuildFile; fileRef = BEB24A1C2CCEE55B006E5750 /* 113965bb5fe7074edc9ca25991e7ad35 */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -29,6 +30,7 @@
 		BEB24A122CCE95EB006E5750 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		BEB24A142CCE95EB006E5750 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		BEB24A152CCE95EB006E5750 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
+		BEB24A1C2CCEE55B006E5750 /* 113965bb5fe7074edc9ca25991e7ad35 */ = {isa = PBXFileReference; lastKnownFileType = file; path = 113965bb5fe7074edc9ca25991e7ad35; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -46,6 +48,7 @@
 			isa = PBXGroup;
 			children = (
 				BEB24A022CCE95EA006E5750 /* tinygrad-ios */,
+				BEB24A1C2CCEE55B006E5750 /* 113965bb5fe7074edc9ca25991e7ad35 */,
 				BEB24A012CCE95EA006E5750 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -135,6 +138,7 @@
 			files = (
 				BEB24A102CCE95EB006E5750 /* Assets.xcassets in Resources */,
 				BEB24A132CCE95EB006E5750 /* Base in Resources */,
+				BEB24A1D2CCEE55B006E5750 /* 113965bb5fe7074edc9ca25991e7ad35 in Resources */,
 				BEB24A0E2CCE95EA006E5750 /* Base in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

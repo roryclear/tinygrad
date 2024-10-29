@@ -13,7 +13,6 @@
 NSMutableDictionary<NSString *, id> *objects;
 id<MTLComputeCommandEncoder> encoder;
 id<MTLDevice> device;
-id<MTLLibrary> library; //TODO use string, instead of file?
 id<MTLCommandQueue> command_queue;
 MTLComputePipelineDescriptor *desc;
 NSMutableArray *queue;
@@ -21,7 +20,6 @@ NSMutableArray *queue;
 - (void)viewDidLoad {
     device = MTLCreateSystemDefaultDevice();
     command_queue = [device newCommandQueueWithMaxCommandBufferCount: 1024 ];
-    library = [MTLCreateSystemDefaultDevice() newDefaultLibrary];
     desc = [MTLComputePipelineDescriptor new];
     objects = [[NSMutableDictionary alloc] init];
     [desc setSupportIndirectCommandBuffers: true ];

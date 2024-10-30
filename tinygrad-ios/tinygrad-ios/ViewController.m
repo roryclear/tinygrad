@@ -3,6 +3,7 @@
 #import <netinet/in.h>
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
+#import <GZIP/GZIP.h>
 
 @interface ViewController ()
 @property (nonatomic) CFSocketRef socket;
@@ -27,10 +28,6 @@ NSMutableArray *queue;
     
     [super viewDidLoad];
     [self startHTTPServer];
-}
-
-- (void)new_buffer:(NSString *)key size:(int)size {
-    [objects setObject:[device newBufferWithLength:size options:MTLResourceStorageModeShared] forKey:key];
 }
 
 uint8_t *convertNSStringToBytes(NSString *hexString) {
@@ -105,7 +102,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
     if (type != kCFSocketAcceptCallBack) return;
     
     CFSocketNativeHandle handle = *(CFSocketNativeHandle *)data;
-    char buffer[1024*100] = {0}; //TODO how big/small should this be?
+    char buffer[1024*500] = {0}; //TODO how big/small should this be?
     
     ssize_t receivedBytes = recv(handle, buffer, sizeof(buffer) - 1, 0);
     if (receivedBytes < 1) {
@@ -120,9 +117,12 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
     CFHTTPMessageAppendBytes(httpRequest, CFDataGetBytePtr(dataRef), CFDataGetLength(dataRef));
     
     if (CFHTTPMessageIsHeaderComplete(httpRequest)) {
-        NSData *bodyData = (__bridge_transfer NSData *)CFHTTPMessageCopyBody(httpRequest);
+        //NSData *bodyData = (__bridge_transfer NSData *)CFHTTPMessageCopyBody(httpRequest);
+        NSData *bodyDataUnc = (__bridge_transfer NSData *)CFHTTPMessageCopyBody(httpRequest);
+        NSData *bodyData = [bodyDataUnc gunzippedData];
         
         if (!bodyData) {
+            NSLog(@"no body data");
             const char *response = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\n\r\nInvalid request: Missing or malformed body.";
             send(handle, response, strlen(response), 0);
             close(handle);
@@ -135,7 +135,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         NSDictionary *jsonDict = [NSJSONSerialization JSONObjectWithData:bodyData options:0 error:&jsonError];
         
         if (!jsonDict || jsonError) {
-            //NSLog(@"json error");
+            NSLog(@"no json error");
             const char *response = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\n\r\nInvalid request: Missing or malformed body.";
             send(handle, response, strlen(response), 0);
             close(handle);

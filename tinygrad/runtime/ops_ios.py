@@ -6,6 +6,8 @@ from tinygrad.device import Compiled, Compiler, LRUAllocator
 from tinygrad.renderer.cstyle import MetalRenderer
 import requests
 import time
+import json
+import gzip
 
 var_num = -1
 def new_var():
@@ -22,7 +24,7 @@ class iosCompiler(Compiler):
     name = src[src.index("void")+5:]
     name = name[:name.index("(")]
     self.device.queue["queue"].append(["new_library",src,name])
-    self.device.send_queue()
+    #self.device.send_queue()
     return
 
 class iosProgram:
@@ -44,8 +46,6 @@ class iosProgram:
       self.device.queue["queue"].append(["set_bytes",' '.join(f"{(a >> (i * 8)) & 0xff:02x}" for i in range(4)),4,i]) #TODO
     self.device.queue["queue"].append(["dispatch",global_size[0],global_size[1],global_size[2],local_size[0],local_size[1],local_size[2]])
     self.device.queue["queue"].append(["commit",command_buffer])
-    if len(self.device.queue["queue"]) > 50: #TODO remove
-      self.device.send_queue()
     self.device.mtl_buffers_in_flight.append(command_buffer)
 
 class iosBuffer:
@@ -100,11 +100,14 @@ class iosDevice(Compiled):
 
   def send_queue(self):
     url = "http://192.168.1.105:8081" #your iOS device's local IP
-    payload = self.queue
+    #payload = self.queue
+    payload = json.dumps(self.queue) # Compress the JSON string 
+    compressed_payload = gzip.compress(payload.encode('utf-8'))
     status = 400
     while status != 200:
       try:
-        response = requests.post(url, json=payload,timeout=3600)
+        headers = {'Content-Encoding': 'gzip', 'Content-Type': 'application/json'}
+        response = requests.post(url, compressed_payload,headers=headers,timeout=3600)
         self.queue = {"queue":[]} #TODO: hack to not crash iOS
         if response.status_code == 200:
             status = 200

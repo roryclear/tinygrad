@@ -25,7 +25,6 @@ NSMutableArray *queue;
     objects = [[NSMutableDictionary alloc] init];
     [desc setSupportIndirectCommandBuffers: true ];
     queue = [[NSMutableArray alloc] init];
-    
     [super viewDidLoad];
     [self startHTTPServer];
 }
@@ -122,7 +121,6 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         NSData *bodyData = [bodyDataUnc gunzippedData];
         
         if (!bodyData) {
-            NSLog(@"no body data");
             const char *response = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\n\r\nInvalid request: Missing or malformed body.";
             send(handle, response, strlen(response), 0);
             close(handle);
@@ -135,7 +133,6 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         NSDictionary *jsonDict = [NSJSONSerialization JSONObjectWithData:bodyData options:0 error:&jsonError];
         
         if (!jsonDict || jsonError) {
-            NSLog(@"no json error");
             const char *response = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\n\r\nInvalid request: Missing or malformed body.";
             send(handle, response, strlen(response), 0);
             close(handle);
@@ -218,6 +215,56 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                     NSData *data = [NSData dataWithBytesNoCopy:bytes length:length freeWhenDone:YES];
                     memcpy([(id<MTLBuffer>)objects[queue[i][2]] contents], [data bytes], [data length]);
                 }
+                if ([queue[i][0] isEqualToString:@"new_icb"]) {
+                    MTLIndirectCommandBufferDescriptor *icb_descriptor = [[MTLIndirectCommandBufferDescriptor alloc] init];
+                    icb_descriptor.commandTypes = MTLIndirectCommandTypeConcurrentDispatch;
+                    icb_descriptor.inheritBuffers = NO;
+                    icb_descriptor.inheritPipelineState = NO;
+                    icb_descriptor.maxKernelBufferBindCount = 31;
+                    [objects setObject:[device newIndirectCommandBufferWithDescriptor:icb_descriptor
+                                                                           maxCommandCount:[queue[i][1] intValue]
+                                                                                   options:MTLResourceCPUCacheModeDefaultCache] forKey:queue[i][2]];
+                }
+                if ([queue[i][0] isEqualToString:@"icb_command"]) {
+                    [objects setObject:[objects[queue[i][1]] indirectComputeCommandAtIndex:[queue[i][2] intValue]] forKey:queue[i][3]];
+                }
+                if ([queue[i][0] isEqualToString:@"set_icb_pipeline_state"]) {
+                    [objects[queue[i][1]] setComputePipelineState: objects[queue[i][2]]];
+                }
+                if ([queue[i][0] isEqualToString:@"set_kernel_buffer"]) {
+                    [objects[queue[i][1]] setKernelBuffer:objects[queue[i][2]] offset:[queue[i][3] intValue] atIndex:[queue[i][4] intValue]];
+                }
+                if ([queue[i][0] isEqualToString:@"set_kernel_buffer_int"]) {
+                    [objects[queue[i][1]] setKernelBuffer:objects[queue[i][2]] offset: [queue[i][3] intValue] atIndex: [queue[i][4] intValue]];
+                }
+                if ([queue[i][0] isEqualToString:@"concurrent_dispatch_and_barrier"]) {
+                    [objects[queue[i][1]] concurrentDispatchThreadgroups: MTLSizeMake([queue[i][2] intValue], [queue[i][3] intValue], [queue[i][4] intValue]) threadsPerThreadgroup:MTLSizeMake([queue[i][5] intValue], [queue[i][6] intValue], [queue[i][7] intValue])];
+                    [objects[queue[i][1]] setBarrier];
+                }
+                if ([queue[i][0] isEqualToString:@"concurrent_dispatch"]) {
+                    id<MTLIndirectComputeCommand> computeCommand = [objects[queue[i][1]] indirectComputeCommandAtIndex:[queue[i][2] intValue]];
+                    [computeCommand concurrentDispatchThreadgroups:MTLSizeMake([queue[i][3] intValue], [queue[i][4] intValue], [queue[i][5] intValue]) threadsPerThreadgroup:MTLSizeMake([queue[i][6] intValue], [queue[i][7] intValue], [queue[i][8] intValue])];
+                }
+                if ([queue[i][0] isEqualToString:@"commit_2"]) {
+                    [objects setObject:[command_queue commandBuffer] forKey:queue[i][1]];
+                    encoder = [objects[queue[i][1]] computeCommandEncoder];
+                    NSInteger len = [queue[i][2] intValue];
+                    NSMutableArray<id<MTLResource>> *resources = [[NSMutableArray alloc] init];
+                    for (int j = 0; j < len; j++) {
+                        [resources addObject:objects[queue[i][3+j]]];
+                    }
+                    __unsafe_unretained id<MTLResource> resourceArray[len];
+                    [resources getObjects:resourceArray range:NSMakeRange(0, len)];
+                    [encoder useResources:resourceArray count:len usage:(MTLResourceUsageRead | MTLResourceUsageWrite)];
+                    [encoder executeCommandsInBuffer:objects[queue[i][3+len]] withRange:NSMakeRange(0, [queue[i][3+len+1] intValue])];
+                    [encoder endEncoding];
+                    [objects[queue[i][1]] commit];
+                    [objects[queue[i][1]] waitUntilCompleted];
+                }
+                if ([queue[i][0] isEqualToString:@"input_replace"]) {
+                    id<MTLIndirectComputeCommand> computeCommand = [objects[queue[i][1]] indirectComputeCommandAtIndex:[queue[i][2] intValue]];
+                    [computeCommand setKernelBuffer: objects[queue[i][3]] offset:[queue[i][4] intValue] atIndex:[queue[i][5] intValue]];
+                }
             }
         }
     }
@@ -228,3 +275,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
 }
 
 @end
+
+
+
+

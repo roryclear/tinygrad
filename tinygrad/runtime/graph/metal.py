@@ -6,8 +6,8 @@ from tinygrad.device import Buffer
 from tinygrad.engine.realize import ExecItem, CompiledRunner
 from tinygrad.engine.jit import GraphRunner, GraphException
 from tinygrad.ops import Variable
-from tinygrad.runtime.ops_metal import wait_check, msg, libobjc, to_struct, objc_instance,\
-  MTLResourceOptions, elapsed_time, objc_id
+from tinygrad.runtime.ops_metal import msg, libobjc, to_struct, objc_instance,\
+  MTLResourceOptions, objc_id
 
 class MTLIndirectCommandType:
   MTLIndirectCommandTypeConcurrentDispatch = (1 << 5)
@@ -46,7 +46,8 @@ class MetalGraph(GraphRunner):
         if b is not None and b not in input_rawbuffers:
           msg(icb_command, "setKernelBuffer:offset:atIndex:", b._buf.buf, b._buf.offset, i)
           all_resources.append(b._buf.buf)
-      for i,v in enumerate(prg.p.vars): msg(icb_command, "setKernelBuffer:offset:atIndex:", self.int_buf.buf, self.vars.index(v)*4, len(ji.bufs)+i)
+      for i,v in enumerate(prg.p.vars):
+        msg(icb_command, "setKernelBuffer:offset:atIndex:", self.int_buf.buf, self.vars.index(v)*4, len(ji.bufs)+i)
 
       global_size, local_size = prg.p.launch_dims(var_vals)
       msg(icb_command, "concurrentDispatchThreadgroups:threadsPerThreadgroup:", to_struct(*global_size), to_struct(*local_size))
@@ -60,7 +61,8 @@ class MetalGraph(GraphRunner):
 
   def __call__(self, input_rawbuffers: List[Buffer], var_vals: Dict[Variable, int], wait=False) -> Optional[float]:
 
-    if self.command_buffer is not None and self.command_buffer in self.device.mtl_buffers_in_flight: wait_check(self.command_buffer)
+    if self.command_buffer is not None and self.command_buffer in self.device.mtl_buffers_in_flight:
+      msg(self.command_buffer, "waitUntilCompleted")
     all_resources = dedup(self.all_resources + [x._buf.buf for x in input_rawbuffers])
 
     for (j,i),input_idx in self.input_replace.items():
@@ -96,8 +98,5 @@ class MetalGraph(GraphRunner):
     msg(command_buffer, "commit")
     self.command_buffer = command_buffer
 
-    if wait:
-      wait_check(command_buffer)
-      return elapsed_time(command_buffer)
     self.device.mtl_buffers_in_flight.append(command_buffer)
     return None

@@ -1,0 +1,446 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		BEB24A052CCE95EA006E5750 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = BEB24A042CCE95EA006E5750 /* AppDelegate.m */; };
+		BEB24A082CCE95EA006E5750 /* SceneDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = BEB24A072CCE95EA006E5750 /* SceneDelegate.m */; };
+		BEB24A0B2CCE95EA006E5750 /* ViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = BEB24A0A2CCE95EA006E5750 /* ViewController.m */; };
+		BEB24A0E2CCE95EA006E5750 /* Base in Resources */ = {isa = PBXBuildFile; fileRef = BEB24A0D2CCE95EA006E5750 /* Base */; };
+		BEB24A102CCE95EB006E5750 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BEB24A0F2CCE95EB006E5750 /* Assets.xcassets */; };
+		BEB24A132CCE95EB006E5750 /* Base in Resources */ = {isa = PBXBuildFile; fileRef = BEB24A122CCE95EB006E5750 /* Base */; };
+		BEB24A162CCE95EB006E5750 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = BEB24A152CCE95EB006E5750 /* main.m */; };
+		BEB24A1D2CCEE55B006E5750 /* 113965bb5fe7074edc9ca25991e7ad35 in Resources */ = {isa = PBXBuildFile; fileRef = BEB24A1C2CCEE55B006E5750 /* 113965bb5fe7074edc9ca25991e7ad35 */; };
+		E2CC37721693440B8C1AACE2 /* Pods_tinygrad_ios.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 70C96A487DD4B6B6AB6C6813 /* Pods_tinygrad_ios.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		27FE90C86D6FCFA97917F6D7 /* Pods-tinygrad-ios.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-tinygrad-ios.debug.xcconfig"; path = "Target Support Files/Pods-tinygrad-ios/Pods-tinygrad-ios.debug.xcconfig"; sourceTree = "<group>"; };
+		70C96A487DD4B6B6AB6C6813 /* Pods_tinygrad_ios.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_tinygrad_ios.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		BEB24A002CCE95EA006E5750 /* tinygrad-ios.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "tinygrad-ios.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		BEB24A032CCE95EA006E5750 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
+		BEB24A042CCE95EA006E5750 /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
+		BEB24A062CCE95EA006E5750 /* SceneDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SceneDelegate.h; sourceTree = "<group>"; };
+		BEB24A072CCE95EA006E5750 /* SceneDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SceneDelegate.m; sourceTree = "<group>"; };
+		BEB24A092CCE95EA006E5750 /* ViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ViewController.h; sourceTree = "<group>"; };
+		BEB24A0A2CCE95EA006E5750 /* ViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ViewController.m; sourceTree = "<group>"; };
+		BEB24A0D2CCE95EA006E5750 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
+		BEB24A0F2CCE95EB006E5750 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		BEB24A122CCE95EB006E5750 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		BEB24A142CCE95EB006E5750 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		BEB24A152CCE95EB006E5750 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
+		BEB24A1C2CCEE55B006E5750 /* 113965bb5fe7074edc9ca25991e7ad35 */ = {isa = PBXFileReference; lastKnownFileType = file; path = 113965bb5fe7074edc9ca25991e7ad35; sourceTree = "<group>"; };
+		FEB863AF0C7FADCB0E4C9E8A /* Pods-tinygrad-ios.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-tinygrad-ios.release.xcconfig"; path = "Target Support Files/Pods-tinygrad-ios/Pods-tinygrad-ios.release.xcconfig"; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		BEB249FD2CCE95EA006E5750 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E2CC37721693440B8C1AACE2 /* Pods_tinygrad_ios.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		57DDFA0738D8A7728EA245BB /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				70C96A487DD4B6B6AB6C6813 /* Pods_tinygrad_ios.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		BEB249F72CCE95EA006E5750 = {
+			isa = PBXGroup;
+			children = (
+				BEB24A022CCE95EA006E5750 /* tinygrad-ios */,
+				BEB24A1C2CCEE55B006E5750 /* 113965bb5fe7074edc9ca25991e7ad35 */,
+				BEB24A012CCE95EA006E5750 /* Products */,
+				EAFE397ADD848305A2AA6212 /* Pods */,
+				57DDFA0738D8A7728EA245BB /* Frameworks */,
+			);
+			sourceTree = "<group>";
+		};
+		BEB24A012CCE95EA006E5750 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				BEB24A002CCE95EA006E5750 /* tinygrad-ios.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		BEB24A022CCE95EA006E5750 /* tinygrad-ios */ = {
+			isa = PBXGroup;
+			children = (
+				BEB24A032CCE95EA006E5750 /* AppDelegate.h */,
+				BEB24A042CCE95EA006E5750 /* AppDelegate.m */,
+				BEB24A062CCE95EA006E5750 /* SceneDelegate.h */,
+				BEB24A072CCE95EA006E5750 /* SceneDelegate.m */,
+				BEB24A092CCE95EA006E5750 /* ViewController.h */,
+				BEB24A0A2CCE95EA006E5750 /* ViewController.m */,
+				BEB24A0C2CCE95EA006E5750 /* Main.storyboard */,
+				BEB24A0F2CCE95EB006E5750 /* Assets.xcassets */,
+				BEB24A112CCE95EB006E5750 /* LaunchScreen.storyboard */,
+				BEB24A142CCE95EB006E5750 /* Info.plist */,
+				BEB24A152CCE95EB006E5750 /* main.m */,
+			);
+			path = "tinygrad-ios";
+			sourceTree = "<group>";
+		};
+		EAFE397ADD848305A2AA6212 /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				27FE90C86D6FCFA97917F6D7 /* Pods-tinygrad-ios.debug.xcconfig */,
+				FEB863AF0C7FADCB0E4C9E8A /* Pods-tinygrad-ios.release.xcconfig */,
+			);
+			path = Pods;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		BEB249FF2CCE95EA006E5750 /* tinygrad-ios */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BEB24A192CCE95EB006E5750 /* Build configuration list for PBXNativeTarget "tinygrad-ios" */;
+			buildPhases = (
+				0194059FBAA754D28FF44D98 /* [CP] Check Pods Manifest.lock */,
+				BEB249FC2CCE95EA006E5750 /* Sources */,
+				BEB249FD2CCE95EA006E5750 /* Frameworks */,
+				BEB249FE2CCE95EA006E5750 /* Resources */,
+				A14DA82930B7BE0E2B3F4326 /* [CP] Embed Pods Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "tinygrad-ios";
+			productName = "tinygrad-ios";
+			productReference = BEB24A002CCE95EA006E5750 /* tinygrad-ios.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		BEB249F82CCE95EA006E5750 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastUpgradeCheck = 1540;
+				TargetAttributes = {
+					BEB249FF2CCE95EA006E5750 = {
+						CreatedOnToolsVersion = 15.4;
+					};
+				};
+			};
+			buildConfigurationList = BEB249FB2CCE95EA006E5750 /* Build configuration list for PBXProject "tinygrad-ios" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = BEB249F72CCE95EA006E5750;
+			productRefGroup = BEB24A012CCE95EA006E5750 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				BEB249FF2CCE95EA006E5750 /* tinygrad-ios */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		BEB249FE2CCE95EA006E5750 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BEB24A102CCE95EB006E5750 /* Assets.xcassets in Resources */,
+				BEB24A132CCE95EB006E5750 /* Base in Resources */,
+				BEB24A1D2CCEE55B006E5750 /* 113965bb5fe7074edc9ca25991e7ad35 in Resources */,
+				BEB24A0E2CCE95EA006E5750 /* Base in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		0194059FBAA754D28FF44D98 /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-tinygrad-ios-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		A14DA82930B7BE0E2B3F4326 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-tinygrad-ios/Pods-tinygrad-ios-frameworks-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-tinygrad-ios/Pods-tinygrad-ios-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-tinygrad-ios/Pods-tinygrad-ios-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		BEB249FC2CCE95EA006E5750 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BEB24A0B2CCE95EA006E5750 /* ViewController.m in Sources */,
+				BEB24A052CCE95EA006E5750 /* AppDelegate.m in Sources */,
+				BEB24A162CCE95EB006E5750 /* main.m in Sources */,
+				BEB24A082CCE95EA006E5750 /* SceneDelegate.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXVariantGroup section */
+		BEB24A0C2CCE95EA006E5750 /* Main.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				BEB24A0D2CCE95EA006E5750 /* Base */,
+			);
+			name = Main.storyboard;
+			sourceTree = "<group>";
+		};
+		BEB24A112CCE95EB006E5750 /* LaunchScreen.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				BEB24A122CCE95EB006E5750 /* Base */,
+			);
+			name = LaunchScreen.storyboard;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		BEB24A172CCE95EB006E5750 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+			};
+			name = Debug;
+		};
+		BEB24A182CCE95EB006E5750 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		BEB24A1A2CCE95EB006E5750 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 27FE90C86D6FCFA97917F6D7 /* Pods-tinygrad-ios.debug.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = VLS9B5G7MH;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "tinygrad-ios/Info.plist";
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UIMainStoryboardFile = Main;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "rory.tinygrad-ios";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		BEB24A1B2CCE95EB006E5750 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = FEB863AF0C7FADCB0E4C9E8A /* Pods-tinygrad-ios.release.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = VLS9B5G7MH;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "tinygrad-ios/Info.plist";
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UIMainStoryboardFile = Main;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "rory.tinygrad-ios";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		BEB249FB2CCE95EA006E5750 /* Build configuration list for PBXProject "tinygrad-ios" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BEB24A172CCE95EB006E5750 /* Debug */,
+				BEB24A182CCE95EB006E5750 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		BEB24A192CCE95EB006E5750 /* Build configuration list for PBXNativeTarget "tinygrad-ios" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BEB24A1A2CCE95EB006E5750 /* Debug */,
+				BEB24A1B2CCE95EB006E5750 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = BEB249F82CCE95EA006E5750 /* Project object */;
+}

@@ -6,6 +6,33 @@ from tinygrad.device import Compiled, Compiler, CompileError, LRUAllocator
 from tinygrad.renderer.cstyle import MetalRenderer
 import json, gzip, requests, time
 
+var_num = -1
+def new_var():
+  global var_num
+  return "v" + str(var_num:=var_num+1)
+
+def send_queue(queue):
+  url = "http://192.168.1.113:8081" #your iOS device's local IP
+  #url = "http://192.168.1.12:8081"
+  #payload = self.queue
+  payload = json.dumps(queue) # Compress the JSON string 
+  compressed_payload = gzip.compress(payload.encode('utf-8'))
+  status = 400
+  while status != 200:
+    try:
+      headers = {'Content-Encoding': 'gzip', 'Content-Type': 'application/json'}
+      response = requests.post(url, compressed_payload,headers=headers,timeout=3600)
+      queue = {"queue":[]} #TODO: hack to not crash iOS
+      if response.status_code == 200:
+          status = 200
+          if len(response.text) > 0:
+            return response.text
+      else:
+          time.sleep(0.1)
+    except requests.exceptions.RequestException as e:
+      #print("An error occurred:", e)
+      time.sleep(0.2)
+
 class objc_id(ctypes.c_void_p): # This prevents ctypes from converting response to plain int, and dict.fromkeys() can use it to dedup
   def __hash__(self): return hash(self.value)
   def __eq__(self, other): return self.value == other.value
@@ -41,6 +68,14 @@ def msg(ptr: objc_id, selector: str, /, *args: Any, restype: type[T] = objc_id) 
   sender = libobjc["objc_msgSend"] # Using attribute access returns a new reference so setting restype is safe
   sender.restype = restype
   return sender(ptr, sel(selector), *args)
+
+def msg_ios(ptr,selector,*args,res=None):
+  req = [ptr,selector]
+  req.append(len(args))
+  for x in args: req.append(x)
+  if res != None: req.append(res)
+  send_queue({"queue":[req]})
+  return res
 
 def to_struct(*t: int, _type: type = ctypes.c_ulong):
   class Struct(ctypes.Structure): pass
@@ -106,40 +141,23 @@ class MetalAllocator(LRUAllocator):
     file_name = file_name[::-1]
     buf_name = str(dest._buf.buf)
     self.device.queue["queue"].append(["memcpy",buf_name,file_name,src.offset,src.nbytes])
-  def copyin(self, dest:MetalBuffer, src:memoryview): self.as_buffer(dest)[:] = src
-  def copyout(self, dest:memoryview, src:MetalBuffer): dest[:] = self.as_buffer(src)
+  def copyin(self, dest:MetalBuffer, src:memoryview): 
+    self.as_buffer(dest)[:] = src
+  def copyout(self, dest:memoryview, src:MetalBuffer): 
+    exit() #TODO
+    dest[:] = self.as_buffer(src)
   def offset(self, buf:MetalBuffer, size:int, offset:int): return MetalBuffer(buf.buf, size, offset)
 
 class MetalDevice(Compiled):
   def __init__(self, device:str):
     self.queue = {"queue":[]}
     self.device = libmetal.MTLCreateSystemDefaultDevice()
+    self.device_ios = "d"
     self.mtl_queue = msg(self.device, "newCommandQueueWithMaxCommandBufferCount:", 1024, restype=objc_instance)
+    self.mtl_queue_ios = msg_ios(self.device_ios,"newCommandQueueWithMaxCommandBufferCount:",1024,res=new_var())
     if self.mtl_queue is None: raise RuntimeError("Cannot allocate a new command queue")
     self.mtl_buffers_in_flight: List[Any] = []
 
     from tinygrad.runtime.graph.metal import MetalGraph
     super().__init__(device, MetalAllocator(self), MetalRenderer(), Compiler(),
                      functools.partial(MetalProgram, self), MetalGraph)
-
-  def send_queue(self):
-    url = "http://192.168.1.113:8081" #your iOS device's local IP
-    #url = "http://192.168.1.12:8081"
-    #payload = self.queue
-    payload = json.dumps(self.queue) # Compress the JSON string 
-    compressed_payload = gzip.compress(payload.encode('utf-8'))
-    status = 400
-    while status != 200:
-      try:
-        headers = {'Content-Encoding': 'gzip', 'Content-Type': 'application/json'}
-        response = requests.post(url, compressed_payload,headers=headers,timeout=3600)
-        self.queue = {"queue":[]} #TODO: hack to not crash iOS
-        if response.status_code == 200:
-            status = 200
-            if len(response.text) > 0:
-              return response.text
-        else:
-            time.sleep(0.1)
-      except requests.exceptions.RequestException as e:
-        #print("An error occurred:", e)
-        time.sleep(0.2)

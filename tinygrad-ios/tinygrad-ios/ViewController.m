@@ -162,6 +162,19 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 [invocation setArgument:&(NSInteger){[queue[0][i] intValue]} atIndex:i-1];
                 continue;
             }
+            if ([queue[0][i] isKindOfClass:[NSString class]]) { //If it's a string, could be a key or a string string
+                if ([objects objectForKey:queue[0][i]]) {
+                    [invocation setArgument:&(id){ objects[queue[0][i]] } atIndex:i-1];
+                    continue;
+                }
+                if([queue[0][i] isEqualToString:@"error"]) {
+                    NSError *error = nil;
+                    [invocation setArgument:&error atIndex:i-1];
+                    continue;
+                }
+                [invocation setArgument:&(NSString *){queue[0][i]} atIndex:i-1]; //IF NOT IN OBJECTS
+                continue;
+            }
         }
         [invocation invoke];
         if ([queue[0] count] == 4+[queue[0][2] intValue]) {
@@ -174,7 +187,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
 
 
         
-        for (int i = 0; i < [queue count]; i++) {
+            for (int i = 0; i < [queue count]; i++) {
             //ONE THING AT A TIME FOR NOW
             [queue removeAllObjects];
             /*

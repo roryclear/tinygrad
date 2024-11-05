@@ -142,31 +142,34 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         NSArray *req_queue = jsonDict[@"queue"];
         [queue addObjectsFromArray:req_queue];
 
-
         SEL selector = NSSelectorFromString(queue[0][1]);
-
-        if ([device respondsToSelector:selector]) {
-            NSMethodSignature *signature = [(id)objects[queue[0][0]] methodSignatureForSelector:selector];
-            NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
-
+        NSMethodSignature *signature;
+        NSInvocation *invocation;
+        if ([objects objectForKey:queue[0][0]]) {
+            signature = [(id)objects[queue[0][0]] methodSignatureForSelector:selector];
+            invocation = [NSInvocation invocationWithMethodSignature:signature];
             [invocation setSelector:selector];
             [invocation setTarget:objects[queue[0][0]]];
-            for(int i = 3; i < 3+[queue[0][2] intValue]; i++){
-                if ([queue[0][i] isKindOfClass:[NSNumber class]]) {
-                    [invocation setArgument:&(NSInteger){[queue[0][i] intValue]} atIndex:i-1];
-                    continue;
-                }
-            }
-            [invocation invoke];
-            if ([queue[0] count] == 4+[queue[0][2] intValue]) {
-                __unsafe_unretained id result = nil;
-                [invocation getReturnValue:&result];
-                [objects setObject:result forKey:[queue[0] lastObject]];
-                NSLog(@"Successfully created command queue: %@", result);
-            }
         } else {
-            NSLog(@"The device does not respond to the selector newCommandQueueWithMaxCommandBufferCount:");
+            Class class = NSClassFromString(queue[0][0]);
+            NSMethodSignature *signature = [class methodSignatureForSelector:selector];
+            invocation = [NSInvocation invocationWithMethodSignature:signature];
+            [invocation setSelector:selector];
+            [invocation setTarget:class];
         }
+        for(int i = 3; i < 3+[queue[0][2] intValue]; i++){
+            if ([queue[0][i] isKindOfClass:[NSNumber class]]) {
+                [invocation setArgument:&(NSInteger){[queue[0][i] intValue]} atIndex:i-1];
+                continue;
+            }
+        }
+        [invocation invoke];
+        if ([queue[0] count] == 4+[queue[0][2] intValue]) {
+            __unsafe_unretained id result = nil;
+            [invocation getReturnValue:&result];
+            [objects setObject:result forKey:[queue[0] lastObject]];
+        }
+            
 
 
 

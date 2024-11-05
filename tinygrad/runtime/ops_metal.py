@@ -72,6 +72,7 @@ def msg(ptr: objc_id, selector: str, /, *args: Any, restype: type[T] = objc_id) 
 def msg_ios(ptr,selector,*args,res=None):
   req = [ptr,selector]
   req.append(len(args))
+  print("rory len args =",len(args))
   for x in args: req.append(x)
   if res != None: req.append(res)
   send_queue({"queue":[req]})
@@ -86,6 +87,7 @@ class MetalProgram:
   def __init__(self, device:MetalDevice, name:str, lib:bytes):
     self.device, self.name, self.lib = device, name, lib
     options = msg(libobjc.objc_getClass(b"MTLCompileOptions"), "new", restype=objc_instance)
+    options_ios = msg_ios("MTLCompileOptions","new",res=new_var())
     code_ns_str = msg(libobjc.objc_getClass(b"NSString"), "stringWithUTF8String:", lib, restype=objc_instance)
     self.library = msg(self.device.device, "newLibraryWithSource:options:error:", code_ns_str, options,
                   ctypes.byref(compileError:=objc_instance()), restype=objc_instance)

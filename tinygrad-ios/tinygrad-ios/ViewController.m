@@ -141,7 +141,16 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         
         NSArray *req_queue = jsonDict[@"queue"];
         [queue addObjectsFromArray:req_queue];
-
+        
+        if([queue[0][1] isEqualToString:@"dispatchThreadgroups:threadsPerThreadgroup:"]){ //TODO, don't know how to not hardcode yet
+            [objects[queue[0][0]] dispatchThreadgroups: MTLSizeMake([queue[0][3] intValue], [queue[0][4] intValue], [queue[0][5] intValue]) threadsPerThreadgroup: MTLSizeMake([queue[0][6] intValue], [queue[0][7] intValue], [queue[0][8] intValue]) ];
+            [queue removeAllObjects];
+            const char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
+            send(handle, response, strlen(response), 0);
+            close(handle);
+            return;
+        }
+        
         SEL selector = NSSelectorFromString(queue[0][1]);
         NSMethodSignature *signature;
         NSInvocation *invocation;
@@ -163,15 +172,30 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 continue;
             }
             if ([queue[0][i] isKindOfClass:[NSString class]]) { //If it's a string, could be a key or a string string
+                NSLog(@"%@",queue[0][i]);
                 if ([objects objectForKey:queue[0][i]]) {
                     [invocation setArgument:&(id){ objects[queue[0][i]] } atIndex:i-1];
                     continue;
                 }
-                if([queue[0][i] isEqualToString:@"error"]) {
+                if([queue[0][i] isEqualToString:@"error"] || [queue[0][i] isEqualToString:@"none"]) {
                     NSError *error = nil;
                     [invocation setArgument:&error atIndex:i-1];
                     continue;
                 }
+                if([queue[0][i] isEqualToString:@"false"]) {
+                    [invocation setArgument:&(BOOL){NO} atIndex:i-1];
+                    continue;
+                }
+                if([queue[0][i] isEqualToString:@"true"]) {
+                    [invocation setArgument:&(BOOL){YES} atIndex:i-1];
+                    continue;
+                }
+                if(i == 3 && [queue[0][1] isEqualToString:@"setBytes:length:atIndex:"]) { // string to bytes
+                    uint8_t *byteArgument = convertNSStringToBytes(queue[0][3]);
+                    [invocation setArgument:&byteArgument atIndex:i-1];
+                    continue;
+                }
+                
                 [invocation setArgument:&(NSString *){queue[0][i]} atIndex:i-1]; //IF NOT IN OBJECTS
                 continue;
             }
@@ -183,13 +207,11 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             [objects setObject:result forKey:[queue[0] lastObject]];
         }
             
-
-
-
+        [queue removeAllObjects];
         
             for (int i = 0; i < [queue count]; i++) {
             //ONE THING AT A TIME FOR NOW
-            [queue removeAllObjects];
+            
             /*
             if ([queue[i][0] isEqualToString:@"memcpy"])  {
                 if ([objects objectForKey:queue[i][2]] == nil) {

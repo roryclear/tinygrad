@@ -74,6 +74,7 @@ def msg_ios(ptr,selector,*args,res=None):
   req.append(len(args))
   for x in args: req.append(x)
   if res != None: req.append(res)
+  print(req)
   send_queue({"queue":[req]})
   return res
 
@@ -93,31 +94,53 @@ class MetalProgram:
                   ctypes.byref(compileError:=objc_instance()), restype=objc_instance)
     self.library_ios = msg_ios("d","newLibraryWithSource:options:error:",code_ns_str_ios,options_ios,"error",res=new_var())
     name_ns_str = msg(libobjc.objc_getClass(b"NSString"), "stringWithUTF8String:", name.encode(), restype=objc_instance)
+    name_ns_str_ios = name #Don't need above in iOS
     self.fxn = msg(self.library, "newFunctionWithName:", name_ns_str, restype=objc_instance)
+    self.fxn_ios = msg_ios(self.library_ios, "newFunctionWithName:", name_ns_str_ios, res=new_var())
     descriptor = msg(libobjc.objc_getClass(b"MTLComputePipelineDescriptor"), "new", restype=objc_instance)
+    descriptor_ios = msg_ios("MTLComputePipelineDescriptor", "new", res=new_var())
     msg(descriptor, "setComputeFunction:", self.fxn)
+    msg_ios(descriptor_ios, "setComputeFunction:", self.fxn_ios)
     msg(descriptor, "setSupportIndirectCommandBuffers:", True)
+    msg_ios(descriptor_ios, "setSupportIndirectCommandBuffers:", "true")
     self.pipeline_state = msg(self.device.device, "newComputePipelineStateWithDescriptor:options:reflection:error:",
       descriptor, MTLPipelineOption.MTLPipelineOptionNone, None, ctypes.byref(error_pipeline_creation:=objc_instance()), restype=objc_instance)
+    self.pipeline_state_ios = msg_ios(self.device.device_ios,"newComputePipelineStateWithDescriptor:options:reflection:error:",
+    descriptor_ios,0,"none",res=new_var())
 
   def __call__(self, *bufs, global_size:Tuple[int,int,int]=(1,1,1), local_size:Tuple[int,int,int]=(1,1,1), vals:Tuple[int, ...]=(), wait=False):
-    max_total_threads = msg(self.pipeline_state, "maxTotalThreadsPerThreadgroup", restype=ctypes.c_ulong)
+    #max_total_threads = msg(self.pipeline_state, "maxTotalThreadsPerThreadgroup", restype=ctypes.c_ulong)
+    max_total_threads = 1024 #TODO
     if prod(local_size) > cast(int, max_total_threads):
       exec_width = msg(self.pipeline_state, "threadExecutionWidth", restype=ctypes.c_ulong)
       memory_length = msg(self.pipeline_state, "staticThreadgroupMemoryLength", restype=ctypes.c_ulong)
       raise RuntimeError(f"local size {local_size} bigger than {max_total_threads} with exec width {exec_width} memory length {memory_length}")
+
     command_buffer = msg(self.device.mtl_queue, "commandBuffer", restype=objc_instance)
+    command_buffer_ios = msg_ios(self.device.mtl_queue_ios,"commandBuffer",res=new_var())
     encoder = msg(command_buffer, "computeCommandEncoder", restype=objc_instance)
+    encoder_ios = msg_ios(command_buffer_ios,"computeCommandEncoder",res=new_var())
     msg(encoder, "setComputePipelineState:", self.pipeline_state)
-    for i,a in enumerate(bufs): msg(encoder, "setBuffer:offset:atIndex:", a.buf, a.offset, i)
-    for i,a in enumerate(vals,start=len(bufs)): msg(encoder, "setBytes:length:atIndex:", bytes(ctypes.c_int(a)), 4, i)
+    msg_ios(encoder_ios,"setComputePipelineState:",self.pipeline_state_ios)
+    for i,a in enumerate(bufs): 
+      msg(encoder, "setBuffer:offset:atIndex:", a.buf, a.offset, i)
+      msg_ios(encoder_ios,"setBuffer:offset:atIndex:",a.buf_ios,a.offset,i)
+    for i,a in enumerate(vals,start=len(bufs)): 
+      msg(encoder, "setBytes:length:atIndex:", bytes(ctypes.c_int(a)), 4, i)
+      msg_ios(encoder_ios,"setBytes:length:atIndex:",' '.join(f"{(a >> (i * 8)) & 0xff:02x}" for i in range(4)),4,i)
     msg(encoder, "dispatchThreadgroups:threadsPerThreadgroup:", to_struct(*global_size), to_struct(*local_size))
+    msg_ios(encoder_ios,"dispatchThreadgroups:threadsPerThreadgroup:",global_size[0],global_size[1],global_size[2],local_size[0],local_size[1],local_size[2])
     msg(encoder, "endEncoding")
+    msg_ios(encoder_ios,"endEncoding")
     msg(command_buffer, "commit")
+    msg_ios(command_buffer_ios,"commit")
     self.device.mtl_buffers_in_flight.append(command_buffer)
 
 class MetalBuffer:
-  def __init__(self, buf:Any, size:int, offset=0): self.buf, self.size, self.offset = buf, size, offset
+  def __init__(self, buf:Any, size:int, offset=0,buf_ios=None): 
+    self.buf, self.size, self.offset,self.buf_ios = buf, size, offset,buf_ios
+    if buf_ios == None: 
+      self.buf_ios = msg_ios("d","newBufferWithLength:options:",size,0,res=new_var())
 
 class MetalAllocator(LRUAllocator):
   def __init__(self, device:MetalDevice):
@@ -126,8 +149,9 @@ class MetalAllocator(LRUAllocator):
   def _alloc(self, size:int, options) -> MetalBuffer:
     # Buffer is explicitly released in _free() rather than garbage collected via reference count
     ret = msg(self.device.device, "newBufferWithLength:options:", size, MTLResourceOptions.MTLResourceStorageModeShared, restype=objc_id)
+    ret_ios = msg_ios(self.device.device_ios,"newBufferWithLength:options:",size,0,res=new_var())
     if ret.value is None: raise MemoryError(f"Metal OOM while allocating {size=}")
-    return MetalBuffer(ret, size)
+    return MetalBuffer(ret, size,buf_ios=ret_ios)
   def _free(self, opaque:MetalBuffer, options): msg(opaque.buf, "release")
   def transfer(self, dest:MetalBuffer, src:MetalBuffer, sz:int, src_dev:MetalDevice, dest_dev:MetalDevice): exit() #TODO
   def from_buffer(self, src:memoryview) -> Optional[Any]: exit() #TODO

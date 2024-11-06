@@ -171,7 +171,10 @@ class MetalAllocator(LRUAllocator):
     #byte_str = msg_ios("copyout",src.buf_ios)
     #byte_values = bytearray(int(b, 16) for b in byte_str.split())
     #print(byte_values)
-    #ret = memoryview(byte_values)
+    #ret_ios = memoryview(byte_values)
+    #print("ios buffer\t",ret_ios.tobytes())
+    #print("metal buffer\t",ret.tobytes())
+
     return ret
   
   def copy_from_disk(self,dest,src):
@@ -183,7 +186,17 @@ class MetalAllocator(LRUAllocator):
     #self.device.queue["queue"].append(["memcpy",buf_name,file_name,src.offset,src.nbytes])
   
   def copyin(self, dest:MetalBuffer, src:memoryview):
-    self.as_buffer(dest)[:] = src #FOR METAL, BELOW IOS
+    for cbuf in self.device.mtl_buffers_in_flight:
+      msg(cbuf[0], "waitUntilCompleted")
+      if len(cbuf) > 1: msg_ios(cbuf[1],"waitUntilCompleted")
+    self.device.mtl_buffers_in_flight.clear()
+
+    #METAL AND IOS BELOW
+    ptr = msg(dest.buf, "contents", restype=objc_id) # Shared memory, do not release here
+    array = (ctypes.c_char * (dest.offset + dest.size)).from_address(ptr.value)
+    ret = memoryview(array).cast("B")[dest.offset:]
+    ret[:] = src
+
     formatted_hex = ' '.join(f'{b:02x}' for b in src)
     msg_ios("copyin",formatted_hex,dest.buf_ios)
 
@@ -205,4 +218,5 @@ class MetalDevice(Compiled):
     from tinygrad.runtime.graph.metal import MetalGraph
     super().__init__(device, MetalAllocator(self), MetalRenderer(), Compiler(),
                      functools.partial(MetalProgram, self), MetalGraph)
+
 

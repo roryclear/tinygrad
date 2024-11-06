@@ -151,6 +151,49 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             return;
         }
         
+        if([queue[0][0] isEqualToString:@"copyin"]) {
+            NSArray<NSString *> *hexArray = [queue[0][1] componentsSeparatedByString:@" "];
+            NSUInteger length = hexArray.count;
+            uint8_t *bytes = malloc(length);
+            for (NSUInteger i = 0; i < length; i++) {
+                unsigned int byteValue;
+                [[NSScanner scannerWithString:hexArray[i]] scanHexInt:&byteValue];
+                bytes[i] = (uint8_t)byteValue;
+            }
+            NSData *data = [NSData dataWithBytesNoCopy:bytes length:length freeWhenDone:YES];
+            memcpy([(id<MTLBuffer>)objects[queue[0][2]] contents], [data bytes], [data length]);
+            const char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
+            send(handle, response, strlen(response), 0);
+            close(handle);
+            [queue removeAllObjects];
+            return;
+        }
+        
+        if([queue[0][0] isEqualToString:@"copyout"]) {
+            char *bytes = charArrayFromMTLBuffer(objects[queue[0][1]]);
+            char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
+            size_t totalLength = strlen(response) + strlen(bytes) + 1;
+            char *fullResponse = malloc(totalLength);
+            strcpy(fullResponse, response);
+            strcat(fullResponse, bytes);
+            send(handle, fullResponse, strlen(fullResponse), 0);
+            close(handle);
+            [queue removeAllObjects];
+        }
+        
+        if([queue[0][0] isEqualToString:@"memcpy"]) {
+            if ([objects objectForKey:queue[0][3]] == nil) {
+                [objects setObject:[NSData dataWithContentsOfURL:[[NSBundle mainBundle] URLForResource:queue[0][3] withExtension:nil]] forKey:queue[0][3]];
+            }
+            memcpy([(id<MTLBuffer>)objects[queue[0][1]] contents] + 0, [(NSData *)objects[queue[0][3]] bytes] + [queue[0][4] intValue], [queue[0][5] intValue]);
+            [queue removeAllObjects];
+            const char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
+            send(handle, response, strlen(response), 0);
+            close(handle);
+            [queue removeAllObjects];
+            return;
+        }
+        
         SEL selector = NSSelectorFromString(queue[0][1]);
         NSMethodSignature *signature;
         NSInvocation *invocation;
@@ -256,6 +299,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
 }
 
 @end
+
 
 
 

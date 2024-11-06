@@ -75,7 +75,8 @@ def msg_ios(ptr,selector,*args,res=None):
   for x in args: req.append(x)
   if res != None: req.append(res)
   print(req)
-  send_queue({"queue":[req]})
+  res2 = send_queue({"queue":[req]})
+  if res2 != None: return res2
   return res
 
 def to_struct(*t: int, _type: type = ctypes.c_ulong):
@@ -134,13 +135,14 @@ class MetalProgram:
     msg_ios(encoder_ios,"endEncoding")
     msg(command_buffer, "commit")
     msg_ios(command_buffer_ios,"commit")
-    self.device.mtl_buffers_in_flight.append(command_buffer)
+    self.device.mtl_buffers_in_flight.append([command_buffer,command_buffer_ios])
 
 class MetalBuffer:
   def __init__(self, buf:Any, size:int, offset=0,buf_ios=None): 
     self.buf, self.size, self.offset,self.buf_ios = buf, size, offset,buf_ios
-    if buf_ios == None: 
-      self.buf_ios = msg_ios("d","newBufferWithLength:options:",size,0,res=new_var())
+    if buf_ios == None:
+      res = new_var()
+      self.buf_ios = msg_ios("d","newBufferWithLength:options:",size,0,res=res)
 
 class MetalAllocator(LRUAllocator):
   def __init__(self, device:MetalDevice):
@@ -157,19 +159,34 @@ class MetalAllocator(LRUAllocator):
   def from_buffer(self, src:memoryview) -> Optional[Any]: exit() #TODO
   def as_buffer(self, src:MetalBuffer) -> memoryview:
     for cbuf in self.device.mtl_buffers_in_flight:
-      msg(cbuf, "waitUntilCompleted")
+      msg(cbuf[0], "waitUntilCompleted")
+      if len(cbuf) > 1: msg_ios(cbuf[1],"waitUntilCompleted")
     self.device.mtl_buffers_in_flight.clear()
+
+    #METAL AND IOS BELOW
     ptr = msg(src.buf, "contents", restype=objc_id) # Shared memory, do not release here
     array = (ctypes.c_char * (src.offset + src.size)).from_address(ptr.value)
-    return memoryview(array).cast("B")[src.offset:]
+    ret = memoryview(array).cast("B")[src.offset:]
+
+    #byte_str = msg_ios("copyout",src.buf_ios)
+    #byte_values = bytearray(int(b, 16) for b in byte_str.split())
+    #print(byte_values)
+    #ret = memoryview(byte_values)
+    return ret
+  
   def copy_from_disk(self,dest,src):
     file_name = src.device[::-1]
     file_name = file_name[:file_name.index("/")]
     file_name = file_name[::-1]
-    buf_name = str(dest._buf.buf)
-    self.device.queue["queue"].append(["memcpy",buf_name,file_name,src.offset,src.nbytes])
+    buf_name = str(dest._buf.buf_ios)
+    msg_ios("memcpy",buf_name,file_name,src.offset,src.nbytes)
+    #self.device.queue["queue"].append(["memcpy",buf_name,file_name,src.offset,src.nbytes])
+  
   def copyin(self, dest:MetalBuffer, src:memoryview): 
-    self.as_buffer(dest)[:] = src
+    self.as_buffer(dest)[:] = src #FOR METAL, BELOW IOS
+    #formatted_hex = ' '.join(f'{b:02x}' for b in src)
+    #msg_ios("copyin",formatted_hex,dest.buf_ios)
+
   def copyout(self, dest:memoryview, src:MetalBuffer): 
     exit() #TODO
     dest[:] = self.as_buffer(src)
@@ -188,3 +205,4 @@ class MetalDevice(Compiled):
     from tinygrad.runtime.graph.metal import MetalGraph
     super().__init__(device, MetalAllocator(self), MetalRenderer(), Compiler(),
                      functools.partial(MetalProgram, self), MetalGraph)
+

@@ -142,7 +142,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         NSArray *req_queue = jsonDict[@"queue"];
         [queue addObjectsFromArray:req_queue];
         
-        if([queue[0][1] isEqualToString:@"dispatchThreadgroups:threadsPerThreadgroup:"]){ //TODO, don't know how to not hardcode yet
+        if([queue[0][1] isEqualToString:@"dispatchThreadgroups:threadsPerThreadgroup:"]){ //TODO, don't know how to not hardcode yet, copies twice atm too
             [objects[queue[0][0]] dispatchThreadgroups: MTLSizeMake([queue[0][3] intValue], [queue[0][4] intValue], [queue[0][5] intValue]) threadsPerThreadgroup: MTLSizeMake([queue[0][6] intValue], [queue[0][7] intValue], [queue[0][8] intValue]) ];
             [queue removeAllObjects];
             const char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
@@ -161,7 +161,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 bytes[i] = (uint8_t)byteValue;
             }
             NSData *data = [NSData dataWithBytesNoCopy:bytes length:length freeWhenDone:YES];
-            memcpy([(id<MTLBuffer>)objects[queue[0][2]] contents], [data bytes], [data length]);
+            memcpy([(id<MTLBuffer>)objects[queue[0][3]] contents], [data bytes], [data length]);
             const char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
             send(handle, response, strlen(response), 0);
             close(handle);

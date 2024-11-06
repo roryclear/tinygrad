@@ -182,10 +182,10 @@ class MetalAllocator(LRUAllocator):
     msg_ios("memcpy",buf_name,file_name,src.offset,src.nbytes)
     #self.device.queue["queue"].append(["memcpy",buf_name,file_name,src.offset,src.nbytes])
   
-  def copyin(self, dest:MetalBuffer, src:memoryview): 
+  def copyin(self, dest:MetalBuffer, src:memoryview):
     self.as_buffer(dest)[:] = src #FOR METAL, BELOW IOS
-    #formatted_hex = ' '.join(f'{b:02x}' for b in src)
-    #msg_ios("copyin",formatted_hex,dest.buf_ios)
+    formatted_hex = ' '.join(f'{b:02x}' for b in src)
+    msg_ios("copyin",formatted_hex,dest.buf_ios)
 
   def copyout(self, dest:memoryview, src:MetalBuffer): 
     exit() #TODO

@@ -123,7 +123,7 @@ class MetalProgram:
     encoder_ios = msg_ios(command_buffer_ios,"computeCommandEncoder",res=new_var())
     msg(encoder, "setComputePipelineState:", self.pipeline_state)
     msg_ios(encoder_ios,"setComputePipelineState:",self.pipeline_state_ios)
-    for i,a in enumerate(bufs): 
+    for i,a in enumerate(bufs):
       msg(encoder, "setBuffer:offset:atIndex:", a.buf, a.offset, i)
       msg_ios(encoder_ios,"setBuffer:offset:atIndex:",a.buf_ios,a.offset,i)
     for i,a in enumerate(vals,start=len(bufs)): 
@@ -140,9 +140,10 @@ class MetalProgram:
 class MetalBuffer:
   def __init__(self, buf:Any, size:int, offset=0,buf_ios=None): 
     self.buf, self.size, self.offset,self.buf_ios = buf, size, offset,buf_ios
+    
     if buf_ios == None:
       res = new_var()
-      self.buf_ios = msg_ios("d","newBufferWithLength:options:",size,0,res=res)
+      self.buf_ios = res
 
 class MetalAllocator(LRUAllocator):
   def __init__(self, device:MetalDevice):
@@ -167,10 +168,10 @@ class MetalAllocator(LRUAllocator):
     ptr = msg(src.buf, "contents", restype=objc_id) # Shared memory, do not release here
     array = (ctypes.c_char * (src.offset + src.size)).from_address(ptr.value)
     ret = memoryview(array).cast("B")[src.offset:]
-
+    
+    #TODO below gets called when copying weights from disk to metal, so have noted out
     #byte_str = msg_ios("copyout",src.buf_ios)
     #byte_values = bytearray(int(b, 16) for b in byte_str.split())
-    #print(byte_values)
     #ret_ios = memoryview(byte_values)
     #print("ios buffer\t",ret_ios.tobytes())
     #print("metal buffer\t",ret.tobytes())
@@ -203,7 +204,8 @@ class MetalAllocator(LRUAllocator):
   def copyout(self, dest:memoryview, src:MetalBuffer): 
     exit() #TODO
     dest[:] = self.as_buffer(src)
-  def offset(self, buf:MetalBuffer, size:int, offset:int): return MetalBuffer(buf.buf, size, offset)
+  def offset(self, buf:MetalBuffer, size:int, offset:int):
+    return MetalBuffer(buf.buf, size, offset,buf_ios=buf.buf_ios)
 
 class MetalDevice(Compiled):
   def __init__(self, device:str):

@@ -151,6 +151,16 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             return;
         }
         
+        if([queue[0][0] isEqualToString:@"delete"]) {
+            [objects removeAllObjects];
+            const char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
+            send(handle, response, strlen(response), 0);
+            close(handle);
+            [queue removeAllObjects];
+            [objects setObject: device forKey:@"d"]; //NEED TO KEEP DEVICE
+            return;
+        }
+        
         if([queue[0][0] isEqualToString:@"copyin"]) {
             NSArray<NSString *> *hexArray = [queue[0][1] componentsSeparatedByString:@" "];
             NSUInteger length = hexArray.count;
@@ -179,6 +189,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             send(handle, fullResponse, strlen(fullResponse), 0);
             close(handle);
             [queue removeAllObjects];
+            return;
         }
         
         if([queue[0][0] isEqualToString:@"memcpy"]) {

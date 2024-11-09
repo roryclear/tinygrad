@@ -42,6 +42,7 @@ class MetalGraph(GraphRunner):
     self.needs_icb_fix = True #todo, assuming true for my iphone
 
     if len(self.vars): 
+      print("rory int_buf init")
       self.int_buf = self.device.allocator.alloc(len(self.vars)*dtypes.int32.itemsize)
     all_resources = [self.int_buf] if len(self.vars) else []
     all_pipelines = []
@@ -76,6 +77,7 @@ class MetalGraph(GraphRunner):
     self.command_buffer_ios: Any = None
     if len(self.vars):
       self.int_buf_view = self.device.allocator.as_buffer_metal(self.int_buf).cast('i')
+      self.int_buf_view_ios = self.device.allocator.as_buffer_ios(self.int_buf).cast('i')
     self.range = to_struct(0, len(self.jit_cache))
 
   def __call__(self, input_rawbuffers: List[Buffer], var_vals: Dict[Variable, int], wait=False) -> Optional[float]:
@@ -113,13 +115,15 @@ class MetalGraph(GraphRunner):
     for j, var in enumerate(self.vars):
       print("rory j var var_vals[var]? =",j,var,var_vals[var])
       self.int_buf_view[j] = var_vals[var]
+      self.int_buf_view_ios[j] = var_vals[var]
+
 
     
     if len(self.vars) > 0:
-      print("int_buf_view =",self.int_buf_view,self.int_buf_view.tobytes())
+      print("int_buf_view_ios =",self.int_buf_view_ios,self.int_buf_view_ios.tobytes())
       print("int buf =",self.int_buf)
       # in gpt2, int_buf_view = 8 bytes, start_pos and prev token
-      formatted_hex = ' '.join(f'{b:02x}' for b in self.int_buf_view.tobytes())
+      formatted_hex = ' '.join(f'{b:02x}' for b in self.int_buf_view_ios.tobytes())
       print("int_buf_view hex =",formatted_hex)
       msg_ios("copyin",formatted_hex,self.int_buf.buf_ios)
     # has to do this?

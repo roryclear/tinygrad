@@ -113,12 +113,12 @@ class MetalGraph(GraphRunner):
     for j, var in enumerate(self.vars):
       print("rory j var var_vals[var]? =",j,var,var_vals[var])
       self.int_buf_view[j] = var_vals[var]
-    print("int_buf_view =",self.int_buf_view,self.int_buf_view.tobytes())
-    print("int buf =",self.int_buf)
-    # in gpt2, int_buf_view = 8 bytes, start_pos and prev token
 
     
     if len(self.vars) > 0:
+      print("int_buf_view =",self.int_buf_view,self.int_buf_view.tobytes())
+      print("int buf =",self.int_buf)
+      # in gpt2, int_buf_view = 8 bytes, start_pos and prev token
       formatted_hex = ' '.join(f'{b:02x}' for b in self.int_buf_view.tobytes())
       print("int_buf_view hex =",formatted_hex)
       msg_ios("copyin",formatted_hex,self.int_buf.buf_ios)

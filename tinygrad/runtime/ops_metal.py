@@ -12,8 +12,8 @@ def new_var():
   return "v" + str(var_num:=var_num+1)
 
 def send_queue(queue):
-  url = "http://192.168.1.113:8081" #your iOS device's local IP
-  #url = "http://192.168.1.1:8081"
+  #url = "http://192.168.1.113:8081" #your iOS device's local IP
+  url = "http://192.168.1.1:8081"
   #payload = self.queue
   payload = json.dumps(queue) # Compress the JSON string 
   compressed_payload = gzip.compress(payload.encode('utf-8'))
@@ -173,7 +173,8 @@ class MetalAllocator(LRUAllocator):
     print("copying out",src.buf)
     byte_str = msg_ios("copyout",src.buf_ios)
     byte_values = bytearray(int(b, 16) for b in byte_str.split())
-    ret_ios = memoryview(byte_values[:src.size]) #TODO, shouldn't need to do this, something is wrong elsewhere?
+    #ret_ios = memoryview(byte_values[:src.size]) #TODO, shouldn't need to do this, something is wrong elsewhere?
+    ret_ios = memoryview(byte_values[:src.size]) 
     print(src.buf_ios,src.buf)
     #print("ios buffer\t",ret_ios.tobytes())
     #print("metal buffer\t",ret.tobytes())   

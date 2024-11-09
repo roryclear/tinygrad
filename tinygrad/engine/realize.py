@@ -126,6 +126,10 @@ class BufferCopy(Runner):
       dest.allocator.copy_from_disk(dest._buf, src._buf, src.nbytes)
     elif src.device.startswith("DISK") and hasattr(dest.allocator, 'as_buffer'):
       # fast(ish) path, uses readinto in diskbuffers
+      if dest.device == "METAL": #(does metal and not ios, so can compare the results?)
+      #   #dest.allocator.copy_from_disk(dest._buf, src._buf, src.nbytes)
+         src.allocator.copyout(dest.allocator.as_buffer_metal(dest._buf), src._buf)
+         return
       src.allocator.copyout(dest.allocator.as_buffer(dest._buf), src._buf)
     else:
       dest.copyin(src.as_buffer(allow_zero_copy=True))  # may allocate a CPU buffer depending on allow_zero_copy

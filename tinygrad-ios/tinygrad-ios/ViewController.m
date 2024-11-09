@@ -151,13 +151,48 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             return;
         }
         
-        if([queue[0][0] isEqualToString:@"delete"]) {
-            [objects removeAllObjects];
+        if([queue[0][1] isEqualToString:@"concurrentDispatchThreadgroups:threadsPerThreadgroup:"]){ //TODO, don't know how to not hardcode yet, copies twice atm too
+            [objects[queue[0][0]] concurrentDispatchThreadgroups: MTLSizeMake([queue[0][3] intValue], [queue[0][4] intValue], [queue[0][5] intValue]) threadsPerThreadgroup: MTLSizeMake([queue[0][6] intValue], [queue[0][7] intValue], [queue[0][8] intValue]) ];
+            [queue removeAllObjects];
+            const char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
+            send(handle, response, strlen(response), 0);
+            close(handle);
+            return;
+        }
+        
+        if([queue[0][1] isEqualToString:@"useResources:count:usage:"]){
+            NSInteger count = [queue[0] count] - 4;
+            MTLResourceUsage usage = MTLResourceUsageRead | MTLResourceUsageWrite;
+            NSMutableArray<id<MTLResource>> *resources = [NSMutableArray array];
+            for(int i = 0; i < count; i++){
+                [resources addObject:objects[queue[0][i+3]]];
+            }
+            __unsafe_unretained id<MTLResource> resourceArray[resources.count];
+            [resources getObjects:resourceArray range:NSMakeRange(0, resources.count)];
+            [objects[queue[0][0]] useResources:resourceArray count:count usage:usage];
             const char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
             send(handle, response, strlen(response), 0);
             close(handle);
             [queue removeAllObjects];
+            return;
+        }
+        
+        if([queue[0][0] isEqualToString:@"delete"]) {
+            [objects removeAllObjects];
+            [queue removeAllObjects];
             [objects setObject: device forKey:@"d"]; //NEED TO KEEP DEVICE
+            const char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
+            send(handle, response, strlen(response), 0);
+            close(handle);
+            return;
+        }
+        
+        if([queue[0][1] isEqualToString:@"executeCommandsInBuffer:withRange:"]) {
+            [objects[queue[0][0]] executeCommandsInBuffer:objects[queue[0][3]] withRange:NSMakeRange(0,[queue[0][4] intValue])];
+            const char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
+            send(handle, response, strlen(response), 0);
+            close(handle);
+            [queue removeAllObjects];
             return;
         }
         
@@ -244,6 +279,18 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                     [invocation setArgument:&(BOOL){YES} atIndex:i-1];
                     continue;
                 }
+                if([queue[0][i] isEqualToString:@"MTLIndirectCommandTypeConcurrentDispatch"]) {
+                    [invocation setArgument:(&(MTLIndirectCommandType){MTLIndirectCommandTypeConcurrentDispatch}) atIndex:i-1];
+                    continue;
+                }
+                if([queue[0][i] isEqualToString:@"MTLResourceCPUCacheModeDefaultCache"]) {
+                    [invocation setArgument:(&(MTLResourceOptions){MTLResourceCPUCacheModeDefaultCache}) atIndex:i-1];
+                    continue;
+                }
+                if([queue[0][i] isEqualToString:@"MTLResourceUsage.MTLResourceUsageRead | MTLResourceUsage.MTLResourceUsageWrite"]) {
+                    [invocation setArgument:(&(MTLResourceUsage){MTLResourceUsageRead | MTLResourceUsageWrite}) atIndex:i-1];
+                    continue;
+                }
                 if(i == 3 && [queue[0][1] isEqualToString:@"setBytes:length:atIndex:"]) { // string to bytes
                     uint8_t *byteArgument = convertNSStringToBytes(queue[0][3]);
                     [invocation setArgument:&byteArgument atIndex:i-1];
@@ -258,6 +305,9 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         if ([queue[0] count] == 4+[queue[0][2] intValue]) {
             __unsafe_unretained id result = nil;
             [invocation getReturnValue:&result];
+            if (result == nil) {
+                NSLog(@"The result is nil");
+            }
             [objects setObject:result forKey:[queue[0] lastObject]];
         }
             

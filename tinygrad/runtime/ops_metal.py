@@ -13,7 +13,7 @@ def new_var():
 
 def send_queue(queue):
   url = "http://192.168.1.113:8081" #your iOS device's local IP
-  #url = "http://192.168.1.12:8081"
+  #url = "http://192.168.1.1:8081"
   #payload = self.queue
   payload = json.dumps(queue) # Compress the JSON string 
   compressed_payload = gzip.compress(payload.encode('utf-8'))
@@ -91,6 +91,7 @@ class MetalProgram:
     options_ios = msg_ios("MTLCompileOptions","new",res=new_var())
     code_ns_str = msg(libobjc.objc_getClass(b"NSString"), "stringWithUTF8String:", lib, restype=objc_instance) 
     code_ns_str_ios = lib.decode() #Don't need above in iOS
+    print(code_ns_str_ios)
     self.library = msg(self.device.device, "newLibraryWithSource:options:error:", code_ns_str, options,
                   ctypes.byref(compileError:=objc_instance()), restype=objc_instance)
     self.library_ios = msg_ios("d","newLibraryWithSource:options:error:",code_ns_str_ios,options_ios,"error",res=new_var())
@@ -140,7 +141,6 @@ class MetalProgram:
 class MetalBuffer:
   def __init__(self, buf:Any, size:int, offset=0,buf_ios=None): 
     self.buf, self.size, self.offset,self.buf_ios = buf, size, offset,buf_ios
-    
     if buf_ios == None:
       res = new_var()
       self.buf_ios = res
@@ -170,12 +170,44 @@ class MetalAllocator(LRUAllocator):
     ret = memoryview(array).cast("B")[src.offset:]
     
     #TODO below gets called when copying weights from disk to metal, so have noted out
-    #byte_str = msg_ios("copyout",src.buf_ios)
-    #byte_values = bytearray(int(b, 16) for b in byte_str.split())
-    #ret_ios = memoryview(byte_values)
+    print("copying out",src.buf)
+    byte_str = msg_ios("copyout",src.buf_ios)
+    byte_values = bytearray(int(b, 16) for b in byte_str.split())
+    ret_ios = memoryview(byte_values[:src.size]) #TODO, shouldn't need to do this, something is wrong elsewhere?
+    print(src.buf_ios,src.buf)
     #print("ios buffer\t",ret_ios.tobytes())
-    #print("metal buffer\t",ret.tobytes())
+    #print("metal buffer\t",ret.tobytes())   
+    assert ret_ios.tobytes() == ret.tobytes(),("ios:",ret_ios.tobytes(),"\nmetal",ret.tobytes())
+    
+    return ret_ios
+  
+  def as_buffer_ios(self, src:MetalBuffer) -> memoryview:
+    for cbuf in self.device.mtl_buffers_in_flight:
+      msg(cbuf[0], "waitUntilCompleted")
+      if len(cbuf) > 1: msg_ios(cbuf[1],"waitUntilCompleted")
+    self.device.mtl_buffers_in_flight.clear()
+    
+    #TODO below gets called when copying weights from disk to metal, so have noted out
+    byte_str = msg_ios("copyout",src.buf_ios)
+    byte_values = bytearray(int(b, 16) for b in byte_str.split())
+    ret_ios = memoryview(byte_values)
+    print(src.buf_ios,src.buf)
+    #print("ios buffer\t",ret_ios.tobytes())
+    #print("metal buffer\t",ret.tobytes())   
+    
+    return ret_ios
 
+  def as_buffer_metal(self, src:MetalBuffer) -> memoryview:
+    for cbuf in self.device.mtl_buffers_in_flight:
+      msg(cbuf[0], "waitUntilCompleted")
+      if len(cbuf) > 1: msg_ios(cbuf[1],"waitUntilCompleted")
+    self.device.mtl_buffers_in_flight.clear()
+
+    #METAL AND IOS BELOW
+    ptr = msg(src.buf, "contents", restype=objc_id) # Shared memory, do not release here
+    array = (ctypes.c_char * (src.offset + src.size)).from_address(ptr.value)
+    ret = memoryview(array).cast("B")[src.offset:]
+    
     return ret
   
   def copy_from_disk(self,dest,src):

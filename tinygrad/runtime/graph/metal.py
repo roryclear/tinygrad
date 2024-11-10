@@ -55,13 +55,12 @@ class MetalGraph(GraphRunner):
 
     self.all_resources = dedup(all_resources)
     self.all_pipelines_ios = dedup(all_pipelines_ios) #ns what this does but metal does it 
-    self.command_buffer: Any = None
     self.command_buffer_ios: Any = None
     if len(self.vars):
       self.int_buf_view_ios = self.device.allocator.as_buffer_ios(self.int_buf).cast('i')
 
   def __call__(self, input_rawbuffers: List[Buffer], var_vals: Dict[Variable, int], wait=False) -> Optional[float]:
-    if self.command_buffer is not None and [self.command_buffer,self.command_buffer_ios] in self.device.mtl_buffers_in_flight:
+    if self.command_buffer_ios is not None and self.command_buffer_ios in self.device.mtl_buffers_in_flight:
       self.device.msg_ios(self.command_buffer_ios,"waitUntilCompleted")
     all_resources = dedup(self.all_resources + [x._buf for x in input_rawbuffers])
     
@@ -98,5 +97,5 @@ class MetalGraph(GraphRunner):
     self.device.msg_ios(command_buffer_ios,"commit")
     self.command_buffer_ios = command_buffer_ios
 
-    self.device.mtl_buffers_in_flight.append([None,command_buffer_ios])
+    self.device.mtl_buffers_in_flight.append(command_buffer_ios)
     return None

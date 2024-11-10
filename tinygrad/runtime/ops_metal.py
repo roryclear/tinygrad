@@ -36,7 +36,7 @@ class MetalProgram:
     self.device.msg_ios(encoder_ios,"dispatchThreadgroups:threadsPerThreadgroup:",global_size[0],global_size[1],global_size[2],local_size[0],local_size[1],local_size[2])
     self.device.msg_ios(encoder_ios,"endEncoding")
     self.device.msg_ios(command_buffer_ios,"commit")
-    self.device.mtl_buffers_in_flight.append([None,command_buffer_ios])
+    self.device.mtl_buffers_in_flight.append(command_buffer_ios)
 
 class MetalBuffer:
   def __init__(self, buf:Any, size:int, offset=0): 
@@ -56,16 +56,14 @@ class MetalAllocator(LRUAllocator):
   def transfer(self, dest:MetalBuffer, src:MetalBuffer, sz:int, src_dev:MetalDevice, dest_dev:MetalDevice): exit() #TODO
   def from_buffer(self, src:memoryview) -> Optional[Any]: exit() #TODO
   def as_buffer(self, src:MetalBuffer) -> memoryview:
-    for cbuf in self.device.mtl_buffers_in_flight:
-      if len(cbuf) > 1: self.device.msg_ios(cbuf[1],"waitUntilCompleted")
+    for cbuf in self.device.mtl_buffers_in_flight: self.device.msg_ios(cbuf,"waitUntilCompleted")
     self.device.mtl_buffers_in_flight.clear()
     byte_str = self.device.msg_ios("copyout",src.buf)
     byte_values = bytearray(int(b, 16) for b in byte_str.split())
     return memoryview(byte_values[:src.size]) 
   
   def as_buffer_ios(self, src:MetalBuffer) -> memoryview:
-    for cbuf in self.device.mtl_buffers_in_flight:
-      if len(cbuf) > 1: self.device.msg_ios(cbuf[1],"waitUntilCompleted")
+    for cbuf in self.device.mtl_buffers_in_flight: self.device.msg_ios(cbuf,"waitUntilCompleted")
     self.device.mtl_buffers_in_flight.clear()
     byte_str = self.device.msg_ios("copyout",src.buf)
     byte_values = bytearray(int(b, 16) for b in byte_str.split())
@@ -80,8 +78,7 @@ class MetalAllocator(LRUAllocator):
     #self.device.queue["queue"].append(["memcpy",buf_name,file_name,src.offset,src.nbytes])
   
   def copyin(self, dest:MetalBuffer, src:memoryview):
-    for cbuf in self.device.mtl_buffers_in_flight:
-      if len(cbuf) > 1: self.device.msg_ios(cbuf[1],"waitUntilCompleted")
+    for cbuf in self.device.mtl_buffers_in_flight: self.device.msg_ios(cbuf,"waitUntilCompleted")
     self.device.mtl_buffers_in_flight.clear()
 
     formatted_hex = ' '.join(f'{b:02x}' for b in src)
@@ -140,4 +137,3 @@ class MetalDevice(Compiled):
         #print("An error occurred:", e)
         time.sleep(0.2)
     return
-

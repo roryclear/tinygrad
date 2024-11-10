@@ -35,7 +35,7 @@ class MetalGraph(GraphRunner):
 
     if len(self.vars): 
       self.int_buf = self.device.allocator.alloc(len(self.vars)*dtypes.int32.itemsize)
-    all_resources = [self.int_buf] if len(self.vars) else []
+    all_resources = [self.int_buf.buf] if len(self.vars) else []
     all_pipelines = []
     for j,ji in enumerate(self.jit_cache):
       prg: CompiledRunner = cast(CompiledRunner, ji.prg)
@@ -45,7 +45,7 @@ class MetalGraph(GraphRunner):
       for i,b in enumerate(ji.bufs):
         if b is not None and b not in input_rawbuffers:
           self.device.msg(icb_command,"setKernelBuffer:offset:atIndex:",b._buf.buf,b._buf.offset,i)
-          all_resources.append(b._buf)
+          all_resources.append(b._buf.buf)
       for i,v in enumerate(prg.p.vars):
         self.device.msg(icb_command,"setKernelBuffer:offset:atIndex:",self.int_buf.buf,self.vars.index(v)*4, len(ji.bufs)+i)
 
@@ -54,7 +54,7 @@ class MetalGraph(GraphRunner):
       self.device.msg(icb_command,"setBarrier")
 
     self.all_resources = dedup(all_resources)
-    self.all_pipelines = dedup(all_pipelines) #ns what this does but metal does it 
+    self.all_pipelines = dedup(all_pipelines)
     self.command_buffer: Any = None
     if len(self.vars):
       self.int_buf_view = self.device.allocator.as_buffer(self.int_buf).cast('i')
@@ -62,7 +62,7 @@ class MetalGraph(GraphRunner):
   def __call__(self, input_rawbuffers: List[Buffer], var_vals: Dict[Variable, int], wait=False) -> Optional[float]:
     if self.command_buffer is not None and self.command_buffer in self.device.mtl_buffers_in_flight:
       self.device.msg(self.command_buffer,"waitUntilCompleted")
-    all_resources = dedup(self.all_resources + [x._buf for x in input_rawbuffers])
+    all_resources = dedup(self.all_resources + [x._buf.buf for x in input_rawbuffers])
     
     for (j,i),input_idx in self.input_replace.items():
       computeCommand = self.device.msg(self.icb, "indirectComputeCommandAtIndex:", j, res=new_var())
@@ -88,8 +88,7 @@ class MetalGraph(GraphRunner):
 
     command_buffer = self.device.msg(self.device.mtl_queue,"commandBuffer",res=new_var())
     encoder = self.device.msg(command_buffer,"computeCommandEncoder",res=new_var())
-    ios_res = [x.buf for x in all_resources]
-    self.device.msg(encoder,"useResources:count:usage:",*ios_res,
+    self.device.msg(encoder,"useResources:count:usage:",*all_resources,
             "MTLResourceUsage.MTLResourceUsageRead | MTLResourceUsage.MTLResourceUsageWrite") #can infer len in objc
 
     self.device.msg(encoder,"executeCommandsInBuffer:withRange:",self.icb,len(self.jit_cache)) #range is 0-len(jit_cache)

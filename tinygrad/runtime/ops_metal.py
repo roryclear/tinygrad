@@ -102,7 +102,6 @@ class MetalAllocator(LRUAllocator):
     self.device.mtl_buffers_in_flight.clear()
     
     #TODO below gets called when copying weights from disk to metal, so have noted out
-    print("copying out",src.buf)
     byte_str = self.device.msg_ios("copyout",src.buf_ios)
     byte_values = bytearray(int(b, 16) for b in byte_str.split())
     ret_ios = memoryview(byte_values[:src.size]) 
@@ -152,6 +151,7 @@ class MetalDevice(Compiled):
   def __init__(self, device:str):
     self.device = libmetal.MTLCreateSystemDefaultDevice()
     self.device_ios = "d"
+    self.queue = {"queue":[]}
     self.mtl_queue_ios = self.msg_ios(self.device_ios,"newCommandQueueWithMaxCommandBufferCount:",1024,res=new_var())
     self.mtl_buffers_in_flight: List[Any] = []
 
@@ -165,30 +165,34 @@ class MetalDevice(Compiled):
     req.append(len(args))
     for x in args: req.append(x)
     if res != None: req.append(res)
+    self.queue["queue"].append(req)
     print(req)
-    res2 = send_queue({"queue":[req]})
-    if res2 != None: return res2
+    if ptr == "copyout" or len(self.queue["queue"]) > 100: #todo
+      res2 = self.send_queue()
+      self.queue = {"queue":[]}
+      if res2 != None: return res2
     return res
 
-def send_queue(queue):
-  url = "http://192.168.1.113:8081" #your iOS device's local IP
-  #url = "http://192.168.1.1:8081"
-  #payload = self.queue
-  payload = json.dumps(queue) # Compress the JSON string 
-  compressed_payload = gzip.compress(payload.encode('utf-8'))
-  status = 400
-  while status != 200:
-    try:
-      headers = {'Content-Encoding': 'gzip', 'Content-Type': 'application/json'}
-      response = requests.post(url, compressed_payload,headers=headers,timeout=3600)
-      queue = {"queue":[]} #TODO: hack to not crash iOS
-      if response.status_code == 200:
-          status = 200
-          if len(response.text) > 0:
-            return response.text
-      else:
-          time.sleep(0.1)
-    except requests.exceptions.RequestException as e:
-      #print("An error occurred:", e)
-      time.sleep(0.2)
+  def send_queue(self):
+    url = "http://192.168.1.113:8081" #your iOS device's local IP
+    #url = "http://192.168.1.1:8081"
+    #payload = self.queue
+    payload = json.dumps(self.queue) # Compress the JSON string 
+    compressed_payload = gzip.compress(payload.encode('utf-8'))
+    status = 400
+    while status != 200:
+      try:
+        headers = {'Content-Encoding': 'gzip', 'Content-Type': 'application/json'}
+        response = requests.post(url, compressed_payload,headers=headers,timeout=3600)
+        if response.status_code == 200:
+            status = 200
+            if len(response.text) > 0:
+              return response.text
+        else:
+            print(response)
+            time.sleep(0.1)
+      except requests.exceptions.RequestException as e:
+        #print("An error occurred:", e)
+        time.sleep(0.2)
+    return
 

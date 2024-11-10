@@ -22,19 +22,12 @@ class MetalGraph(GraphRunner):
     if not all(isinstance(ji.prg, CompiledRunner) for ji in jit_cache): raise GraphException
 
     # create metal batch exec
-    icb_descriptor = msg(libobjc.objc_getClass(b"MTLIndirectCommandBufferDescriptor"), "new", restype=objc_instance)
     icb_descriptor_ios = self.device.msg_ios("MTLIndirectCommandBufferDescriptor", "new", res=new_var())
-    msg(icb_descriptor, "setCommandTypes:", MTLIndirectCommandType.MTLIndirectCommandTypeConcurrentDispatch)
     self.device.msg_ios(icb_descriptor_ios,"setCommandTypes:","MTLIndirectCommandTypeConcurrentDispatch")
-    msg(icb_descriptor, "setInheritBuffers:", False)
     self.device.msg_ios(icb_descriptor_ios,"setInheritBuffers:","false")
-    msg(icb_descriptor, "setInheritPipelineState:", False)
     self.device.msg_ios(icb_descriptor_ios,"setInheritPipelineState:","false")
-    msg(icb_descriptor, "setMaxKernelBufferBindCount:", 31)
     self.device.msg_ios(icb_descriptor_ios,"setMaxKernelBufferBindCount:",31)
 
-    self.icb = msg(self.device.device, "newIndirectCommandBufferWithDescriptor:maxCommandCount:options:",
-      icb_descriptor, len(self.jit_cache), MTLResourceOptions.MTLResourceCPUCacheModeDefaultCache, restype=objc_instance)
     self.icb_ios = self.device.msg_ios("d","newIndirectCommandBufferWithDescriptor:maxCommandCount:options:",icb_descriptor_ios,len(self.jit_cache),
       "MTLResourceCPUCacheModeDefaultCache",res=new_var())
     #if self.icb.value is None: raise GraphException("create indirect command buffer failed, does your system support this?") works for iphone 13 apple 8
@@ -42,34 +35,26 @@ class MetalGraph(GraphRunner):
     self.needs_icb_fix = True #todo, assuming true for my iphone
 
     if len(self.vars): 
-      print("rory int_buf init")
       self.int_buf = self.device.allocator.alloc(len(self.vars)*dtypes.int32.itemsize)
     all_resources = [self.int_buf] if len(self.vars) else []
-    all_pipelines = []
     all_pipelines_ios = []
     for j,ji in enumerate(self.jit_cache):
       prg: CompiledRunner = cast(CompiledRunner, ji.prg)
-      icb_command = msg(self.icb, "indirectComputeCommandAtIndex:", j, restype=objc_instance)
       icb_command_ios = self.device.msg_ios(self.icb_ios,"indirectComputeCommandAtIndex:",j,res=new_var())
       all_pipelines_ios.append(prg.clprg.pipeline_state_ios)
       self.device.msg_ios(icb_command_ios, "setComputePipelineState:", prg.clprg.pipeline_state_ios)
       for i,b in enumerate(ji.bufs):
         if b is not None and b not in input_rawbuffers:
-          msg(icb_command, "setKernelBuffer:offset:atIndex:", b._buf.buf, b._buf.offset, i)
           self.device.msg_ios(icb_command_ios,"setKernelBuffer:offset:atIndex:",b._buf.buf_ios,b._buf.offset,i)
           all_resources.append(b._buf)
       for i,v in enumerate(prg.p.vars):
-        msg(icb_command, "setKernelBuffer:offset:atIndex:", self.int_buf.buf, self.vars.index(v)*4, len(ji.bufs)+i)
         self.device.msg_ios(icb_command_ios,"setKernelBuffer:offset:atIndex:",self.int_buf.buf_ios,self.vars.index(v)*4, len(ji.bufs)+i)
 
       global_size, local_size = prg.p.launch_dims(var_vals)
-      msg(icb_command, "concurrentDispatchThreadgroups:threadsPerThreadgroup:", to_struct(*global_size), to_struct(*local_size))
       self.device.msg_ios(icb_command_ios,"concurrentDispatchThreadgroups:threadsPerThreadgroup:",global_size[0],global_size[1],global_size[2],local_size[0],local_size[1],local_size[2])
-      msg(icb_command, "setBarrier")
       self.device.msg_ios(icb_command_ios,"setBarrier")
 
     self.all_resources = dedup(all_resources)
-    self.all_pipelines = dedup(all_pipelines)
     self.all_pipelines_ios = dedup(all_pipelines_ios) #ns what this does but metal does it 
     self.command_buffer: Any = None
     self.command_buffer_ios: Any = None
@@ -79,34 +64,18 @@ class MetalGraph(GraphRunner):
 
   def __call__(self, input_rawbuffers: List[Buffer], var_vals: Dict[Variable, int], wait=False) -> Optional[float]:
     if self.command_buffer is not None and [self.command_buffer,self.command_buffer_ios] in self.device.mtl_buffers_in_flight:
-      msg(self.command_buffer, "waitUntilCompleted")
       self.device.msg_ios(self.command_buffer_ios,"waitUntilCompleted")
-    print("rory res")
-    print(self.all_pipelines)
     all_resources = dedup(self.all_resources + [x._buf for x in input_rawbuffers])
     
-    #for x in all_resources:
-    #  print("value for resource",x,x.buf_ios,"size =",x.size)
-    #  MetalAllocator.as_buffer(MetalAllocator(MetalDevice("a")),x)
-
-
     for (j,i),input_idx in self.input_replace.items():
-      computeCommand = msg(self.icb, "indirectComputeCommandAtIndex:", j, restype=objc_id)
       computeCommand_ios = self.device.msg_ios(self.icb_ios, "indirectComputeCommandAtIndex:", j, res=new_var())
-      print("rory offset =",input_rawbuffers[input_idx]._buf.offset)
-      msg(computeCommand, "setKernelBuffer:offset:atIndex:", input_rawbuffers[input_idx]._buf.buf,
-                                                                                 input_rawbuffers[input_idx]._buf.offset, i)
       self.device.msg_ios(computeCommand_ios, "setKernelBuffer:offset:atIndex:", input_rawbuffers[input_idx]._buf.buf_ios,
                                                                                  input_rawbuffers[input_idx]._buf.offset, i)
 
     for j, global_dims, local_dims in self.updated_launch_dims(var_vals):
-      print("RORY VAR_VALS")
       prg = cast(CompiledRunner, self.jit_cache[j].prg)
       global_size, local_size = global_dims or prg.p.global_size, local_dims or prg.p.local_size
-      computeCommand = msg(self.icb, "indirectComputeCommandAtIndex:", j)
       computeCommand_ios = self.device.msg_ios(self.icb_ios, "indirectComputeCommandAtIndex:", j,res=new_var())
-      msg(computeCommand, "concurrentDispatchThreadgroups:threadsPerThreadgroup:",
-                  to_struct(*cast(tuple, global_size)), to_struct(*cast(tuple, local_size)))
       self.device.msg_ios(computeCommand_ios,"concurrentDispatchThreadgroups:threadsPerThreadgroup:",global_size[0],global_size[1],global_size[2],local_size[0],local_size[1],local_size[2])
     
     for j, var in enumerate(self.vars):
@@ -115,17 +84,13 @@ class MetalGraph(GraphRunner):
 
     
     if len(self.vars) > 0:
-      print("int_buf_view_ios =",self.int_buf_view_ios,self.int_buf_view_ios.tobytes())
-      print("int buf =",self.int_buf)
       # in gpt2, int_buf_view = 8 bytes, start_pos and prev token
       formatted_hex = ' '.join(f'{b:02x}' for b in self.int_buf_view_ios.tobytes())
-      print("int_buf_view hex =",formatted_hex)
       self.device.msg_ios("copyin",formatted_hex,self.int_buf.buf_ios)
     # has to do this?
 
     command_buffer_ios = self.device.msg_ios(self.device.mtl_queue_ios,"commandBuffer",res=new_var())
     encoder_ios = self.device.msg_ios(command_buffer_ios,"computeCommandEncoder",res=new_var())
-    metal_res = [x.buf for x in all_resources]
     ios_res = [x.buf_ios for x in all_resources]
     self.device.msg_ios(encoder_ios,"useResources:count:usage:",*ios_res,
             "MTLResourceUsage.MTLResourceUsageRead | MTLResourceUsage.MTLResourceUsageWrite") #can infer len in objc

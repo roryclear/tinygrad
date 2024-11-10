@@ -142,104 +142,105 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         
         NSArray *req_queue = jsonDict[@"queue"];
         [queue addObjectsFromArray:req_queue];
-        
-        if([queue[0][1] isEqualToString:@"dispatchThreadgroups:threadsPerThreadgroup:"]){ //TODO, don't know how to not hardcode yet, copies twice atm too
-            [objects[queue[0][0]] dispatchThreadgroups: MTLSizeMake([queue[0][3] intValue], [queue[0][4] intValue], [queue[0][5] intValue]) threadsPerThreadgroup: MTLSizeMake([queue[0][6] intValue], [queue[0][7] intValue], [queue[0][8] intValue]) ];
-        } else if([queue[0][1] isEqualToString:@"concurrentDispatchThreadgroups:threadsPerThreadgroup:"]){
-            [objects[queue[0][0]] concurrentDispatchThreadgroups: MTLSizeMake([queue[0][3] intValue], [queue[0][4] intValue], [queue[0][5] intValue]) threadsPerThreadgroup: MTLSizeMake([queue[0][6] intValue], [queue[0][7] intValue], [queue[0][8] intValue]) ];
-        } else if([queue[0][1] isEqualToString:@"useResources:count:usage:"]){
-            NSInteger count = [queue[0] count] - 4;
-            MTLResourceUsage usage = MTLResourceUsageRead | MTLResourceUsageWrite;
-            NSMutableArray<id<MTLResource>> *resources = [NSMutableArray array];
-            for(int i = 0; i < count; i++){
-                [resources addObject:objects[queue[0][i+3]]];
-            }
-            __unsafe_unretained id<MTLResource> resourceArray[resources.count];
-            [resources getObjects:resourceArray range:NSMakeRange(0, resources.count)];
-            [objects[queue[0][0]] useResources:resourceArray count:count usage:usage];
-        } else if([queue[0][0] isEqualToString:@"delete"]) {
-            [objects removeAllObjects];
-            [objects setObject: device forKey:@"d"]; //NEED TO KEEP DEVICE
-        } else if([queue[0][1] isEqualToString:@"executeCommandsInBuffer:withRange:"]) {
-            [objects[queue[0][0]] executeCommandsInBuffer:objects[queue[0][3]] withRange:NSMakeRange(0,[queue[0][4] intValue])];
-        } else if([queue[0][0] isEqualToString:@"copyin"]) {
-            NSArray<NSString *> *hexArray = [queue[0][1] componentsSeparatedByString:@" "];
-            NSUInteger length = hexArray.count;
-            uint8_t *bytes = malloc(length);
-            for (NSUInteger i = 0; i < length; i++) {
-                unsigned int byteValue;
-                [[NSScanner scannerWithString:hexArray[i]] scanHexInt:&byteValue];
-                bytes[i] = (uint8_t)byteValue;
-            }
-            NSData *data = [NSData dataWithBytesNoCopy:bytes length:length freeWhenDone:YES];
-            memcpy([(id<MTLBuffer>)objects[queue[0][3]] contents], [data bytes], [data length]);
-        } else if([queue[0][0] isEqualToString:@"copyout"]) {
-            char *bytes = charArrayFromMTLBuffer(objects[queue[0][1]]);
-            char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
-            size_t totalLength = strlen(response) + strlen(bytes) + 1;
-            char *fullResponse = malloc(totalLength);
-            strcpy(fullResponse, response);
-            strcat(fullResponse, bytes);
-            send(handle, fullResponse, strlen(fullResponse), 0);
-            close(handle);
-            [queue removeAllObjects];
-            return;
-        } else if([queue[0][0] isEqualToString:@"memcpy"]) {
-            if ([objects objectForKey:queue[0][3]] == nil) {
-                [objects setObject:[NSData dataWithContentsOfURL:[[NSBundle mainBundle] URLForResource:queue[0][3] withExtension:nil]] forKey:queue[0][3]];
-            }
-            memcpy([(id<MTLBuffer>)objects[queue[0][1]] contents] + 0, [(NSData *)objects[queue[0][3]] bytes] + [queue[0][4] intValue], [queue[0][5] intValue]);
-        } else {
-            SEL selector = NSSelectorFromString(queue[0][1]);
-            NSMethodSignature *signature;
-            NSInvocation *invocation;
-            if ([objects objectForKey:queue[0][0]]) {
-                signature = [(id)objects[queue[0][0]] methodSignatureForSelector:selector];
-                invocation = [NSInvocation invocationWithMethodSignature:signature];
-                [invocation setSelector:selector];
-                [invocation setTarget:objects[queue[0][0]]];
-            } else {
-                Class class = NSClassFromString(queue[0][0]);
-                NSMethodSignature *signature = [class methodSignatureForSelector:selector];
-                invocation = [NSInvocation invocationWithMethodSignature:signature];
-                [invocation setSelector:selector];
-                [invocation setTarget:class];
-            }
-            for(int i = 3; i < 3+[queue[0][2] intValue]; i++){
-                if ([queue[0][i] isKindOfClass:[NSNumber class]]) {
-                    [invocation setArgument:&(NSInteger){[queue[0][i] intValue]} atIndex:i-1];
-                    continue;
+        for(int j = 0; j < [queue count]; j++) {
+            if([queue[j][1] isEqualToString:@"dispatchThreadgroups:threadsPerThreadgroup:"]){ //TODO, don't know how to not hardcode yet, copies twice atm too
+                [objects[queue[j][0]] dispatchThreadgroups: MTLSizeMake([queue[j][3] intValue], [queue[j][4] intValue], [queue[j][5] intValue]) threadsPerThreadgroup: MTLSizeMake([queue[j][6] intValue], [queue[j][7] intValue], [queue[j][8] intValue]) ];
+            } else if([queue[j][1] isEqualToString:@"concurrentDispatchThreadgroups:threadsPerThreadgroup:"]){
+                [objects[queue[j][0]] concurrentDispatchThreadgroups: MTLSizeMake([queue[j][3] intValue], [queue[j][4] intValue], [queue[j][5] intValue]) threadsPerThreadgroup: MTLSizeMake([queue[j][6] intValue], [queue[j][7] intValue], [queue[j][8] intValue]) ];
+            } else if([queue[j][1] isEqualToString:@"useResources:count:usage:"]){
+                NSInteger count = [queue[j] count] - 4;
+                MTLResourceUsage usage = MTLResourceUsageRead | MTLResourceUsageWrite;
+                NSMutableArray<id<MTLResource>> *resources = [NSMutableArray array];
+                for(int i = 0; i < count; i++){
+                    [resources addObject:objects[queue[j][i+3]]];
                 }
-                if ([queue[0][i] isKindOfClass:[NSString class]]) { //If it's a string, could be a key or a string string
-                    NSLog(@"%@",queue[0][i]);
-                    if ([objects objectForKey:queue[0][i]]) {
-                        [invocation setArgument:&(id){ objects[queue[0][i]] } atIndex:i-1];
-                    } else if([queue[0][i] isEqualToString:@"error"] || [queue[0][i] isEqualToString:@"none"]) { //todo just use a dict?
-                        NSError *error = nil;
-                        [invocation setArgument:&error atIndex:i-1];
-                    } else if([queue[0][i] isEqualToString:@"false"]) {
-                        [invocation setArgument:&(BOOL){NO} atIndex:i-1];
-                    } else if([queue[0][i] isEqualToString:@"true"]) {
-                        [invocation setArgument:&(BOOL){YES} atIndex:i-1];
-                    } else if([queue[0][i] isEqualToString:@"MTLIndirectCommandTypeConcurrentDispatch"]) {
-                        [invocation setArgument:(&(MTLIndirectCommandType){MTLIndirectCommandTypeConcurrentDispatch}) atIndex:i-1];
-                    } else if([queue[0][i] isEqualToString:@"MTLResourceCPUCacheModeDefaultCache"]) {
-                        [invocation setArgument:(&(MTLResourceOptions){MTLResourceCPUCacheModeDefaultCache}) atIndex:i-1];
-                    } else if([queue[0][i] isEqualToString:@"MTLResourceUsage.MTLResourceUsageRead | MTLResourceUsage.MTLResourceUsageWrite"]) {
-                        [invocation setArgument:(&(MTLResourceUsage){MTLResourceUsageRead | MTLResourceUsageWrite}) atIndex:i-1];
-                    } else if(i == 3 && [queue[0][1] isEqualToString:@"setBytes:length:atIndex:"]) { // string to bytes
-                        uint8_t *byteArgument = convertNSStringToBytes(queue[0][3]);
-                        [invocation setArgument:&byteArgument atIndex:i-1];
-                    } else {
-                        [invocation setArgument:&(NSString *){queue[0][i]} atIndex:i-1]; //IF NOT IN OBJECTS
+                __unsafe_unretained id<MTLResource> resourceArray[resources.count];
+                [resources getObjects:resourceArray range:NSMakeRange(0, resources.count)];
+                [objects[queue[j][0]] useResources:resourceArray count:count usage:usage];
+            } else if([queue[j][0] isEqualToString:@"delete"]) {
+                [objects removeAllObjects];
+                [objects setObject: device forKey:@"d"]; //NEED TO KEEP DEVICE
+            } else if([queue[j][1] isEqualToString:@"executeCommandsInBuffer:withRange:"]) {
+                [objects[queue[j][0]] executeCommandsInBuffer:objects[queue[j][3]] withRange:NSMakeRange(0,[queue[j][4] intValue])];
+            } else if([queue[j][0] isEqualToString:@"copyin"]) {
+                NSArray<NSString *> *hexArray = [queue[j][1] componentsSeparatedByString:@" "];
+                NSUInteger length = hexArray.count;
+                uint8_t *bytes = malloc(length);
+                for (NSUInteger i = 0; i < length; i++) {
+                    unsigned int byteValue;
+                    [[NSScanner scannerWithString:hexArray[i]] scanHexInt:&byteValue];
+                    bytes[i] = (uint8_t)byteValue;
+                }
+                NSData *data = [NSData dataWithBytesNoCopy:bytes length:length freeWhenDone:YES];
+                memcpy([(id<MTLBuffer>)objects[queue[j][3]] contents], [data bytes], [data length]);
+            } else if([queue[j][0] isEqualToString:@"copyout"]) {
+                char *bytes = charArrayFromMTLBuffer(objects[queue[j][1]]);
+                char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
+                size_t totalLength = strlen(response) + strlen(bytes) + 1;
+                char *fullResponse = malloc(totalLength);
+                strcpy(fullResponse, response);
+                strcat(fullResponse, bytes);
+                send(handle, fullResponse, strlen(fullResponse), 0);
+                close(handle);
+                [queue removeAllObjects];
+                return;
+            } else if([queue[j][0] isEqualToString:@"memcpy"]) {
+                if ([objects objectForKey:queue[j][3]] == nil) {
+                    [objects setObject:[NSData dataWithContentsOfURL:[[NSBundle mainBundle] URLForResource:queue[j][3] withExtension:nil]] forKey:queue[j][3]];
+                }
+                memcpy([(id<MTLBuffer>)objects[queue[j][1]] contents] + 0, [(NSData *)objects[queue[j][3]] bytes] + [queue[j][4] intValue], [queue[j][5] intValue]);
+            } else {
+                SEL selector = NSSelectorFromString(queue[j][1]);
+                NSMethodSignature *signature;
+                NSInvocation *invocation;
+                if ([objects objectForKey:queue[j][0]]) {
+                    signature = [(id)objects[queue[j][0]] methodSignatureForSelector:selector];
+                    invocation = [NSInvocation invocationWithMethodSignature:signature];
+                    [invocation setSelector:selector];
+                    [invocation setTarget:objects[queue[j][0]]];
+                } else {
+                    Class class = NSClassFromString(queue[j][0]);
+                    NSMethodSignature *signature = [class methodSignatureForSelector:selector];
+                    invocation = [NSInvocation invocationWithMethodSignature:signature];
+                    [invocation setSelector:selector];
+                    [invocation setTarget:class];
+                }
+                for(int i = 3; i < 3+[queue[j][2] intValue]; i++){
+                    if ([queue[j][i] isKindOfClass:[NSNumber class]]) {
+                        [invocation setArgument:&(NSInteger){[queue[j][i] intValue]} atIndex:i-1];
+                        continue;
+                    }
+                    if ([queue[j][i] isKindOfClass:[NSString class]]) { //If it's a string, could be a key or a string string
+                        NSLog(@"%@",queue[j][i]);
+                        if ([objects objectForKey:queue[j][i]]) {
+                            [invocation setArgument:&(id){ objects[queue[j][i]] } atIndex:i-1];
+                        } else if([queue[j][i] isEqualToString:@"error"] || [queue[j][i] isEqualToString:@"none"]) { //todo just use a dict?
+                            NSError *error = nil;
+                            [invocation setArgument:&error atIndex:i-1];
+                        } else if([queue[j][i] isEqualToString:@"false"]) {
+                            [invocation setArgument:&(BOOL){NO} atIndex:i-1];
+                        } else if([queue[j][i] isEqualToString:@"true"]) {
+                            [invocation setArgument:&(BOOL){YES} atIndex:i-1];
+                        } else if([queue[j][i] isEqualToString:@"MTLIndirectCommandTypeConcurrentDispatch"]) {
+                            [invocation setArgument:(&(MTLIndirectCommandType){MTLIndirectCommandTypeConcurrentDispatch}) atIndex:i-1];
+                        } else if([queue[j][i] isEqualToString:@"MTLResourceCPUCacheModeDefaultCache"]) {
+                            [invocation setArgument:(&(MTLResourceOptions){MTLResourceCPUCacheModeDefaultCache}) atIndex:i-1];
+                        } else if([queue[j][i] isEqualToString:@"MTLResourceUsage.MTLResourceUsageRead | MTLResourceUsage.MTLResourceUsageWrite"]) {
+                            [invocation setArgument:(&(MTLResourceUsage){MTLResourceUsageRead | MTLResourceUsageWrite}) atIndex:i-1];
+                        } else if(i == 3 && [queue[j][1] isEqualToString:@"setBytes:length:atIndex:"]) { // string to bytes
+                            uint8_t *byteArgument = convertNSStringToBytes(queue[j][3]);
+                            [invocation setArgument:&byteArgument atIndex:i-1];
+                        } else {
+                            [invocation setArgument:&(NSString *){queue[j][i]} atIndex:i-1]; //IF NOT IN OBJECTS
+                        }
                     }
                 }
-            }
-            [invocation invoke];
-            if ([queue[0] count] == 4+[queue[0][2] intValue]) {
-                __unsafe_unretained id result = nil;
-                [invocation getReturnValue:&result];
-                [objects setObject:result forKey:[queue[0] lastObject]];
+                [invocation invoke];
+                if ([queue[j] count] == 4+[queue[j][2] intValue]) {
+                    __unsafe_unretained id result = nil;
+                    [invocation getReturnValue:&result];
+                    [objects setObject:result forKey:[queue[j] lastObject]];
+                }
             }
         }
         [queue removeAllObjects];

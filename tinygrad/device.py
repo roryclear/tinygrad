@@ -29,7 +29,7 @@ class _Device:
   @property
   def default(self) -> Compiled: return self[self.DEFAULT]
   def get_available_devices(self) -> Iterator[str]:
-    for device in ["METAL", "AMD", "NV", "CUDA", "QCOM", "GPU", "CLANG", "LLVM"]:
+    for device in ["METAL", "AMD", "NV", "CUDA", "QCOM", "GPU", "CLANG", "LLVM","IOS"]:
       with contextlib.suppress(Exception): yield self[device].dname
   @functools.cached_property
   def DEFAULT(self) -> str:

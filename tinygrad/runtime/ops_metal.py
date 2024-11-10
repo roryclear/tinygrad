@@ -1,8 +1,8 @@
 from __future__ import annotations
-import os, subprocess, pathlib, ctypes, tempfile, functools
+import ctypes, functools
 from typing import List, Any, Tuple, Optional, cast
 from tinygrad.helpers import prod, getenv, T
-from tinygrad.device import Compiled, Compiler, CompileError, LRUAllocator
+from tinygrad.device import Compiled, Compiler, LRUAllocator
 from tinygrad.renderer.cstyle import MetalRenderer
 import json, gzip, requests, time
 
@@ -11,54 +11,14 @@ def new_var():
   global var_num
   return "v" + str(var_num:=var_num+1)
 
-class objc_id(ctypes.c_void_p): # This prevents ctypes from converting response to plain int, and dict.fromkeys() can use it to dedup
-  def __hash__(self): return hash(self.value)
-  def __eq__(self, other): return self.value == other.value
-
-class objc_instance(objc_id): # method with name "new", "alloc" should be freed after use
-  def __del__(self):
-    msg(self, "release")
-
-@functools.lru_cache(None)
-def sel(name: str):
-  return libobjc.sel_registerName(name.encode())
-
-class MTLResourceOptions:
-  MTLResourceCPUCacheModeDefaultCache = 0
-  MTLResourceStorageModeShared = 0 << 4
-
-class MTLPipelineOption:
-  MTLPipelineOptionNone = 0
-
-libobjc = ctypes.CDLL("/usr/lib/libobjc.dylib")
-libmetal = ctypes.CDLL("/System/Library/Frameworks/Metal.framework/Metal")
-# Must be loaded for default Metal Device: https://developer.apple.com/documentation/metal/1433401-mtlcreatesystemdefaultdevice?language=objc
-ctypes.CDLL("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics")
-libdispatch = ctypes.CDLL("/usr/lib/libSystem.dylib") # libdispatch is part of libSystem on mac
-libobjc.objc_getClass.restype = objc_id
-libobjc.sel_registerName.restype = objc_id
-libmetal.MTLCreateSystemDefaultDevice.restype = objc_instance
-libdispatch.dispatch_data_create.restype = objc_instance
-
-# Ignore mypy error reporting incompatible default, because typevar default only works on python 3.12
-def msg(ptr: objc_id, selector: str, /, *args: Any, restype: type[T] = objc_id) -> T: # type: ignore [assignment]
-  print("msg called")
-  return None
-
-def to_struct(*t: int, _type: type = ctypes.c_ulong):
-  class Struct(ctypes.Structure): pass
-  Struct._fields_ = [(f"field{i}", _type) for i in range(len(t))]
-  return Struct(*t)
-
 class MetalProgram:
   def __init__(self, device:MetalDevice, name:str, lib:bytes):
     self.device, self.name, self.lib = device, name, lib
     options_ios = self.device.msg_ios("MTLCompileOptions","new",res=new_var())
-    code_ns_str_ios = lib.decode() #Don't need above in iOS
+    code_ns_str_ios = lib.decode()
     print(code_ns_str_ios)
     self.library_ios = self.device.msg_ios("d","newLibraryWithSource:options:error:",code_ns_str_ios,options_ios,"error",res=new_var())
-    name_ns_str_ios = name #Don't need above in iOS
-    self.fxn_ios = self.device.msg_ios(self.library_ios, "newFunctionWithName:", name_ns_str_ios, res=new_var())
+    self.fxn_ios = self.device.msg_ios(self.library_ios, "newFunctionWithName:", name, res=new_var())
     descriptor_ios = self.device.msg_ios("MTLComputePipelineDescriptor", "new", res=new_var())
     self.device.msg_ios(descriptor_ios, "setComputeFunction:", self.fxn_ios)
     self.device.msg_ios(descriptor_ios, "setSupportIndirectCommandBuffers:", "true")
@@ -100,30 +60,17 @@ class MetalAllocator(LRUAllocator):
     for cbuf in self.device.mtl_buffers_in_flight:
       if len(cbuf) > 1: self.device.msg_ios(cbuf[1],"waitUntilCompleted")
     self.device.mtl_buffers_in_flight.clear()
-    
-    #TODO below gets called when copying weights from disk to metal, so have noted out
     byte_str = self.device.msg_ios("copyout",src.buf_ios)
     byte_values = bytearray(int(b, 16) for b in byte_str.split())
-    ret_ios = memoryview(byte_values[:src.size]) 
-    print(src.buf_ios,src.buf)
-    #print("ios buffer\t",ret_ios.tobytes())
-    
-    return ret_ios
+    return memoryview(byte_values[:src.size]) 
   
   def as_buffer_ios(self, src:MetalBuffer) -> memoryview:
     for cbuf in self.device.mtl_buffers_in_flight:
       if len(cbuf) > 1: self.device.msg_ios(cbuf[1],"waitUntilCompleted")
     self.device.mtl_buffers_in_flight.clear()
-    
-    #TODO below gets called when copying weights from disk to metal, so have noted out
     byte_str = self.device.msg_ios("copyout",src.buf_ios)
     byte_values = bytearray(int(b, 16) for b in byte_str.split())
-    ret_ios = memoryview(byte_values)
-    print(src.buf_ios,src.buf)
-    #print("ios buffer\t",ret_ios.tobytes())
-    #print("metal buffer\t",ret.tobytes())   
-    
-    return ret_ios
+    return memoryview(byte_values)    
   
   def copy_from_disk(self,dest,src):
     file_name = src.device[::-1]
@@ -149,7 +96,6 @@ class MetalAllocator(LRUAllocator):
 
 class MetalDevice(Compiled):
   def __init__(self, device:str):
-    self.device = libmetal.MTLCreateSystemDefaultDevice()
     self.device_ios = "d"
     self.queue = {"queue":[]}
     self.mtl_queue_ios = self.msg_ios(self.device_ios,"newCommandQueueWithMaxCommandBufferCount:",1024,res=new_var())

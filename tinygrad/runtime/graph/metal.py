@@ -6,8 +6,7 @@ from tinygrad.device import Buffer
 from tinygrad.engine.realize import ExecItem, CompiledRunner
 from tinygrad.engine.jit import GraphRunner, GraphException
 from tinygrad.ops import Variable
-from tinygrad.runtime.ops_metal import msg, libobjc, to_struct, objc_instance,\
-  MTLResourceOptions, objc_id ,new_var, MetalAllocator, MetalDevice
+from tinygrad.runtime.ops_metal import new_var
 
 class MTLIndirectCommandType:
   MTLIndirectCommandTypeConcurrentDispatch = (1 << 5)
@@ -60,7 +59,6 @@ class MetalGraph(GraphRunner):
     self.command_buffer_ios: Any = None
     if len(self.vars):
       self.int_buf_view_ios = self.device.allocator.as_buffer_ios(self.int_buf).cast('i')
-    self.range = to_struct(0, len(self.jit_cache))
 
   def __call__(self, input_rawbuffers: List[Buffer], var_vals: Dict[Variable, int], wait=False) -> Optional[float]:
     if self.command_buffer is not None and [self.command_buffer,self.command_buffer_ios] in self.device.mtl_buffers_in_flight:

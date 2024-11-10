@@ -178,7 +178,7 @@ class IOSDevice(Compiled):
     for x in args: req.append(x)
     if res != None: req.append(res)
     self.queue["queue"].append(req)
-    if ptr == "copyout" or len(self.queue["queue"]) > 100: #todo
+    if ptr == "copyout" or len(self.queue["queue"]) > 1000: #todo, don't send bytes as a string etc
       res2 = self.send_queue()
       self.queue = {"queue":[]}
       if res2 != None: return res2

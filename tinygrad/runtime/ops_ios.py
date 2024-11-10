@@ -1,13 +1,11 @@
 from __future__ import annotations
 import functools
-from typing import List, Any, Tuple, Optional, cast
-from tinygrad.device import Compiled, Compiler, LRUAllocator
+from typing import List, Any, Tuple, Optional, cast, Dict
+from tinygrad.device import Compiled, Compiler, LRUAllocator, Buffer
 from tinygrad.renderer.cstyle import MetalRenderer
 import json, gzip, requests, time
-from typing import List, Any, Dict, cast, Optional
 from tinygrad.dtype import dtypes
 from tinygrad.helpers import dedup
-from tinygrad.device import Buffer
 from tinygrad.engine.realize import ExecItem, CompiledRunner
 from tinygrad.engine.jit import GraphRunner, GraphException
 from tinygrad.ops import Variable
@@ -54,7 +52,6 @@ class IOSAllocator(LRUAllocator):
     self.device:IOSDevice = device
     super().__init__()
   def _alloc(self, size:int, options) -> IOSBuffer:
-    # Buffer is explicitly released in _free() rather than garbage collected via reference count
     buf = self.device.msg(self.device.device,"newBufferWithLength:options:",size,0,res=new_var())
     return IOSBuffer(buf, size)
   def _free(self, opaque:IOSBuffer, options): return #todo?
@@ -73,7 +70,6 @@ class IOSAllocator(LRUAllocator):
     file_name = file_name[::-1]
     buf_name = str(dest._buf.buf)
     self.device.msg("memcpy",buf_name,file_name,src.offset,src.nbytes)
-    #self.device.queue["queue"].append(["memcpy",buf_name,file_name,src.offset,src.nbytes])
   
   def copyin(self, dest:IOSBuffer, src:memoryview):
     for cbuf in self.device.mtl_buffers_in_flight: self.device.msg(cbuf,"waitUntilCompleted")
@@ -155,9 +151,9 @@ class IOSGraph(GraphRunner):
     command_buffer = self.device.msg(self.device.mtl_queue,"commandBuffer",res=new_var())
     encoder = self.device.msg(command_buffer,"computeCommandEncoder",res=new_var())
     self.device.msg(encoder,"useResources:count:usage:",*all_resources,
-            "MTLResourceUsage.MTLResourceUsageRead | MTLResourceUsage.MTLResourceUsageWrite") #can infer len in objc
+            "MTLResourceUsage.MTLResourceUsageRead | MTLResourceUsage.MTLResourceUsageWrite")
 
-    self.device.msg(encoder,"executeCommandsInBuffer:withRange:",self.icb,len(self.jit_cache)) #range is 0-len(jit_cache)
+    self.device.msg(encoder,"executeCommandsInBuffer:withRange:",self.icb,len(self.jit_cache))
     self.device.msg(encoder,"endEncoding")
     self.device.msg(command_buffer,"commit")
     self.command_buffer = command_buffer
@@ -191,7 +187,6 @@ class IOSDevice(Compiled):
   def send_queue(self):
     url = "http://192.168.1.113:8081" #your iOS device's local IP
     #url = "http://192.168.1.1:8081"
-    #payload = self.queue
     payload = json.dumps(self.queue) # Compress the JSON string 
     compressed_payload = gzip.compress(payload.encode('utf-8'))
     status = 400
@@ -206,6 +201,5 @@ class IOSDevice(Compiled):
         else:
             time.sleep(0.1)
       except requests.exceptions.RequestException as e:
-        #print("An error occurred:", e)
         time.sleep(0.2)
     return

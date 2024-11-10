@@ -44,10 +44,10 @@ class MetalGraph(GraphRunner):
       self.device.msg_ios(icb_command_ios, "setComputePipelineState:", prg.clprg.pipeline_state_ios)
       for i,b in enumerate(ji.bufs):
         if b is not None and b not in input_rawbuffers:
-          self.device.msg_ios(icb_command_ios,"setKernelBuffer:offset:atIndex:",b._buf.buf_ios,b._buf.offset,i)
+          self.device.msg_ios(icb_command_ios,"setKernelBuffer:offset:atIndex:",b._buf.buf,b._buf.offset,i)
           all_resources.append(b._buf)
       for i,v in enumerate(prg.p.vars):
-        self.device.msg_ios(icb_command_ios,"setKernelBuffer:offset:atIndex:",self.int_buf.buf_ios,self.vars.index(v)*4, len(ji.bufs)+i)
+        self.device.msg_ios(icb_command_ios,"setKernelBuffer:offset:atIndex:",self.int_buf.buf,self.vars.index(v)*4, len(ji.bufs)+i)
 
       global_size, local_size = prg.p.launch_dims(var_vals)
       self.device.msg_ios(icb_command_ios,"concurrentDispatchThreadgroups:threadsPerThreadgroup:",global_size[0],global_size[1],global_size[2],local_size[0],local_size[1],local_size[2])
@@ -67,7 +67,7 @@ class MetalGraph(GraphRunner):
     
     for (j,i),input_idx in self.input_replace.items():
       computeCommand_ios = self.device.msg_ios(self.icb_ios, "indirectComputeCommandAtIndex:", j, res=new_var())
-      self.device.msg_ios(computeCommand_ios, "setKernelBuffer:offset:atIndex:", input_rawbuffers[input_idx]._buf.buf_ios,
+      self.device.msg_ios(computeCommand_ios, "setKernelBuffer:offset:atIndex:", input_rawbuffers[input_idx]._buf.buf,
                                                                                  input_rawbuffers[input_idx]._buf.offset, i)
 
     for j, global_dims, local_dims in self.updated_launch_dims(var_vals):
@@ -84,12 +84,12 @@ class MetalGraph(GraphRunner):
     if len(self.vars) > 0:
       # in gpt2, int_buf_view = 8 bytes, start_pos and prev token
       formatted_hex = ' '.join(f'{b:02x}' for b in self.int_buf_view_ios.tobytes())
-      self.device.msg_ios("copyin",formatted_hex,self.int_buf.buf_ios)
+      self.device.msg_ios("copyin",formatted_hex,self.int_buf.buf)
     # has to do this?
 
     command_buffer_ios = self.device.msg_ios(self.device.mtl_queue_ios,"commandBuffer",res=new_var())
     encoder_ios = self.device.msg_ios(command_buffer_ios,"computeCommandEncoder",res=new_var())
-    ios_res = [x.buf_ios for x in all_resources]
+    ios_res = [x.buf for x in all_resources]
     self.device.msg_ios(encoder_ios,"useResources:count:usage:",*ios_res,
             "MTLResourceUsage.MTLResourceUsageRead | MTLResourceUsage.MTLResourceUsageWrite") #can infer len in objc
 

@@ -30,7 +30,7 @@ class MetalProgram:
     encoder_ios = self.device.msg_ios(command_buffer_ios,"computeCommandEncoder",res=new_var())
     self.device.msg_ios(encoder_ios,"setComputePipelineState:",self.pipeline_state_ios)
     for i,a in enumerate(bufs):
-      self.device.msg_ios(encoder_ios,"setBuffer:offset:atIndex:",a.buf_ios,a.offset,i)
+      self.device.msg_ios(encoder_ios,"setBuffer:offset:atIndex:",a.buf,a.offset,i)
     for i,a in enumerate(vals,start=len(bufs)): 
       self.device.msg_ios(encoder_ios,"setBytes:length:atIndex:",' '.join(f"{(a >> (i * 8)) & 0xff:02x}" for i in range(4)),4,i)
     self.device.msg_ios(encoder_ios,"dispatchThreadgroups:threadsPerThreadgroup:",global_size[0],global_size[1],global_size[2],local_size[0],local_size[1],local_size[2])
@@ -39,11 +39,10 @@ class MetalProgram:
     self.device.mtl_buffers_in_flight.append([None,command_buffer_ios])
 
 class MetalBuffer:
-  def __init__(self, buf:Any, size:int, offset=0,buf_ios=None): 
-    self.buf, self.size, self.offset,self.buf_ios = buf, size, offset,buf_ios
-    if buf_ios == None:
-      res = new_var()
-      self.buf_ios = res
+  def __init__(self, buf:Any, size:int, offset=0): 
+    self.buf, self.size, self.offset = buf, size, offset
+    if buf == None: 
+      self.buf = new_var()
 
 class MetalAllocator(LRUAllocator):
   def __init__(self, device:MetalDevice):
@@ -51,8 +50,8 @@ class MetalAllocator(LRUAllocator):
     super().__init__()
   def _alloc(self, size:int, options) -> MetalBuffer:
     # Buffer is explicitly released in _free() rather than garbage collected via reference count
-    ret_ios = self.device.msg_ios(self.device.device_ios,"newBufferWithLength:options:",size,0,res=new_var())
-    return MetalBuffer("no buffer remove this", size,buf_ios=ret_ios)
+    buf = self.device.msg_ios(self.device.device_ios,"newBufferWithLength:options:",size,0,res=new_var())
+    return MetalBuffer(buf, size)
   def _free(self, opaque:MetalBuffer, options): return #todo?
   def transfer(self, dest:MetalBuffer, src:MetalBuffer, sz:int, src_dev:MetalDevice, dest_dev:MetalDevice): exit() #TODO
   def from_buffer(self, src:memoryview) -> Optional[Any]: exit() #TODO
@@ -60,7 +59,7 @@ class MetalAllocator(LRUAllocator):
     for cbuf in self.device.mtl_buffers_in_flight:
       if len(cbuf) > 1: self.device.msg_ios(cbuf[1],"waitUntilCompleted")
     self.device.mtl_buffers_in_flight.clear()
-    byte_str = self.device.msg_ios("copyout",src.buf_ios)
+    byte_str = self.device.msg_ios("copyout",src.buf)
     byte_values = bytearray(int(b, 16) for b in byte_str.split())
     return memoryview(byte_values[:src.size]) 
   
@@ -68,7 +67,7 @@ class MetalAllocator(LRUAllocator):
     for cbuf in self.device.mtl_buffers_in_flight:
       if len(cbuf) > 1: self.device.msg_ios(cbuf[1],"waitUntilCompleted")
     self.device.mtl_buffers_in_flight.clear()
-    byte_str = self.device.msg_ios("copyout",src.buf_ios)
+    byte_str = self.device.msg_ios("copyout",src.buf)
     byte_values = bytearray(int(b, 16) for b in byte_str.split())
     return memoryview(byte_values)    
   
@@ -76,7 +75,7 @@ class MetalAllocator(LRUAllocator):
     file_name = src.device[::-1]
     file_name = file_name[:file_name.index("/")]
     file_name = file_name[::-1]
-    buf_name = str(dest._buf.buf_ios)
+    buf_name = str(dest._buf.buf)
     self.device.msg_ios("memcpy",buf_name,file_name,src.offset,src.nbytes)
     #self.device.queue["queue"].append(["memcpy",buf_name,file_name,src.offset,src.nbytes])
   
@@ -86,13 +85,13 @@ class MetalAllocator(LRUAllocator):
     self.device.mtl_buffers_in_flight.clear()
 
     formatted_hex = ' '.join(f'{b:02x}' for b in src)
-    self.device.msg_ios("copyin",formatted_hex,dest.buf_ios)
+    self.device.msg_ios("copyin",formatted_hex,dest.buf)
 
   def copyout(self, dest:memoryview, src:MetalBuffer): 
     exit() #TODO
     dest[:] = self.as_buffer(src)
   def offset(self, buf:MetalBuffer, size:int, offset:int):
-    return MetalBuffer(buf.buf, size, offset,buf_ios=buf.buf_ios)
+    return MetalBuffer(buf.buf, size, offset)
 
 class MetalDevice(Compiled):
   def __init__(self, device:str):

@@ -12,8 +12,8 @@ def new_var():
   return "v" + str(var_num:=var_num+1)
 
 def send_queue(queue):
-  #url = "http://192.168.1.113:8081" #your iOS device's local IP
-  url = "http://192.168.1.1:8081"
+  url = "http://192.168.1.113:8081" #your iOS device's local IP
+  #url = "http://192.168.1.1:8081"
   #payload = self.queue
   payload = json.dumps(queue) # Compress the JSON string 
   compressed_payload = gzip.compress(payload.encode('utf-8'))
@@ -64,10 +64,8 @@ libdispatch.dispatch_data_create.restype = objc_instance
 
 # Ignore mypy error reporting incompatible default, because typevar default only works on python 3.12
 def msg(ptr: objc_id, selector: str, /, *args: Any, restype: type[T] = objc_id) -> T: # type: ignore [assignment]
-  #print(ptr,selector,args)
-  sender = libobjc["objc_msgSend"] # Using attribute access returns a new reference so setting restype is safe
-  sender.restype = restype
-  return sender(ptr, sel(selector), *args)
+  print("msg called")
+  return None
 
 def msg_ios(ptr,selector,*args,res=None):
   req = [ptr,selector]
@@ -87,56 +85,30 @@ def to_struct(*t: int, _type: type = ctypes.c_ulong):
 class MetalProgram:
   def __init__(self, device:MetalDevice, name:str, lib:bytes):
     self.device, self.name, self.lib = device, name, lib
-    options = msg(libobjc.objc_getClass(b"MTLCompileOptions"), "new", restype=objc_instance)
     options_ios = msg_ios("MTLCompileOptions","new",res=new_var())
-    code_ns_str = msg(libobjc.objc_getClass(b"NSString"), "stringWithUTF8String:", lib, restype=objc_instance) 
     code_ns_str_ios = lib.decode() #Don't need above in iOS
     print(code_ns_str_ios)
-    self.library = msg(self.device.device, "newLibraryWithSource:options:error:", code_ns_str, options,
-                  ctypes.byref(compileError:=objc_instance()), restype=objc_instance)
     self.library_ios = msg_ios("d","newLibraryWithSource:options:error:",code_ns_str_ios,options_ios,"error",res=new_var())
-    name_ns_str = msg(libobjc.objc_getClass(b"NSString"), "stringWithUTF8String:", name.encode(), restype=objc_instance)
     name_ns_str_ios = name #Don't need above in iOS
-    self.fxn = msg(self.library, "newFunctionWithName:", name_ns_str, restype=objc_instance)
     self.fxn_ios = msg_ios(self.library_ios, "newFunctionWithName:", name_ns_str_ios, res=new_var())
-    descriptor = msg(libobjc.objc_getClass(b"MTLComputePipelineDescriptor"), "new", restype=objc_instance)
     descriptor_ios = msg_ios("MTLComputePipelineDescriptor", "new", res=new_var())
-    msg(descriptor, "setComputeFunction:", self.fxn)
     msg_ios(descriptor_ios, "setComputeFunction:", self.fxn_ios)
-    msg(descriptor, "setSupportIndirectCommandBuffers:", True)
     msg_ios(descriptor_ios, "setSupportIndirectCommandBuffers:", "true")
-    self.pipeline_state = msg(self.device.device, "newComputePipelineStateWithDescriptor:options:reflection:error:",
-      descriptor, MTLPipelineOption.MTLPipelineOptionNone, None, ctypes.byref(error_pipeline_creation:=objc_instance()), restype=objc_instance)
     self.pipeline_state_ios = msg_ios(self.device.device_ios,"newComputePipelineStateWithDescriptor:options:reflection:error:",
     descriptor_ios,0,"none",res=new_var())
 
   def __call__(self, *bufs, global_size:Tuple[int,int,int]=(1,1,1), local_size:Tuple[int,int,int]=(1,1,1), vals:Tuple[int, ...]=(), wait=False):
-    #max_total_threads = msg(self.pipeline_state, "maxTotalThreadsPerThreadgroup", restype=ctypes.c_ulong)
-    max_total_threads = 1024 #TODO
-    if prod(local_size) > cast(int, max_total_threads):
-      exec_width = msg(self.pipeline_state, "threadExecutionWidth", restype=ctypes.c_ulong)
-      memory_length = msg(self.pipeline_state, "staticThreadgroupMemoryLength", restype=ctypes.c_ulong)
-      raise RuntimeError(f"local size {local_size} bigger than {max_total_threads} with exec width {exec_width} memory length {memory_length}")
-
-    command_buffer = msg(self.device.mtl_queue, "commandBuffer", restype=objc_instance)
     command_buffer_ios = msg_ios(self.device.mtl_queue_ios,"commandBuffer",res=new_var())
-    encoder = msg(command_buffer, "computeCommandEncoder", restype=objc_instance)
     encoder_ios = msg_ios(command_buffer_ios,"computeCommandEncoder",res=new_var())
-    msg(encoder, "setComputePipelineState:", self.pipeline_state)
     msg_ios(encoder_ios,"setComputePipelineState:",self.pipeline_state_ios)
     for i,a in enumerate(bufs):
-      msg(encoder, "setBuffer:offset:atIndex:", a.buf, a.offset, i)
       msg_ios(encoder_ios,"setBuffer:offset:atIndex:",a.buf_ios,a.offset,i)
     for i,a in enumerate(vals,start=len(bufs)): 
-      msg(encoder, "setBytes:length:atIndex:", bytes(ctypes.c_int(a)), 4, i)
       msg_ios(encoder_ios,"setBytes:length:atIndex:",' '.join(f"{(a >> (i * 8)) & 0xff:02x}" for i in range(4)),4,i)
-    msg(encoder, "dispatchThreadgroups:threadsPerThreadgroup:", to_struct(*global_size), to_struct(*local_size))
     msg_ios(encoder_ios,"dispatchThreadgroups:threadsPerThreadgroup:",global_size[0],global_size[1],global_size[2],local_size[0],local_size[1],local_size[2])
-    msg(encoder, "endEncoding")
     msg_ios(encoder_ios,"endEncoding")
-    msg(command_buffer, "commit")
     msg_ios(command_buffer_ios,"commit")
-    self.device.mtl_buffers_in_flight.append([command_buffer,command_buffer_ios])
+    self.device.mtl_buffers_in_flight.append([None,command_buffer_ios])
 
 class MetalBuffer:
   def __init__(self, buf:Any, size:int, offset=0,buf_ios=None): 
@@ -151,40 +123,28 @@ class MetalAllocator(LRUAllocator):
     super().__init__()
   def _alloc(self, size:int, options) -> MetalBuffer:
     # Buffer is explicitly released in _free() rather than garbage collected via reference count
-    ret = msg(self.device.device, "newBufferWithLength:options:", size, MTLResourceOptions.MTLResourceStorageModeShared, restype=objc_id)
     ret_ios = msg_ios(self.device.device_ios,"newBufferWithLength:options:",size,0,res=new_var())
-    if ret.value is None: raise MemoryError(f"Metal OOM while allocating {size=}")
-    return MetalBuffer(ret, size,buf_ios=ret_ios)
-  def _free(self, opaque:MetalBuffer, options): msg(opaque.buf, "release")
+    return MetalBuffer("no buffer remove this", size,buf_ios=ret_ios)
+  def _free(self, opaque:MetalBuffer, options): return #todo?
   def transfer(self, dest:MetalBuffer, src:MetalBuffer, sz:int, src_dev:MetalDevice, dest_dev:MetalDevice): exit() #TODO
   def from_buffer(self, src:memoryview) -> Optional[Any]: exit() #TODO
   def as_buffer(self, src:MetalBuffer) -> memoryview:
     for cbuf in self.device.mtl_buffers_in_flight:
-      msg(cbuf[0], "waitUntilCompleted")
       if len(cbuf) > 1: msg_ios(cbuf[1],"waitUntilCompleted")
     self.device.mtl_buffers_in_flight.clear()
-
-    #METAL AND IOS BELOW
-    ptr = msg(src.buf, "contents", restype=objc_id) # Shared memory, do not release here
-    array = (ctypes.c_char * (src.offset + src.size)).from_address(ptr.value)
-    ret = memoryview(array).cast("B")[src.offset:]
     
     #TODO below gets called when copying weights from disk to metal, so have noted out
     print("copying out",src.buf)
     byte_str = msg_ios("copyout",src.buf_ios)
     byte_values = bytearray(int(b, 16) for b in byte_str.split())
-    #ret_ios = memoryview(byte_values[:src.size]) #TODO, shouldn't need to do this, something is wrong elsewhere?
     ret_ios = memoryview(byte_values[:src.size]) 
     print(src.buf_ios,src.buf)
     #print("ios buffer\t",ret_ios.tobytes())
-    #print("metal buffer\t",ret.tobytes())   
-    assert ret_ios.tobytes() == ret.tobytes(),("ios:",ret_ios.tobytes(),"\nmetal",ret.tobytes())
     
     return ret_ios
   
   def as_buffer_ios(self, src:MetalBuffer) -> memoryview:
     for cbuf in self.device.mtl_buffers_in_flight:
-      msg(cbuf[0], "waitUntilCompleted")
       if len(cbuf) > 1: msg_ios(cbuf[1],"waitUntilCompleted")
     self.device.mtl_buffers_in_flight.clear()
     
@@ -197,19 +157,6 @@ class MetalAllocator(LRUAllocator):
     #print("metal buffer\t",ret.tobytes())   
     
     return ret_ios
-
-  def as_buffer_metal(self, src:MetalBuffer) -> memoryview:
-    for cbuf in self.device.mtl_buffers_in_flight:
-      msg(cbuf[0], "waitUntilCompleted")
-      if len(cbuf) > 1: msg_ios(cbuf[1],"waitUntilCompleted")
-    self.device.mtl_buffers_in_flight.clear()
-
-    #METAL AND IOS BELOW
-    ptr = msg(src.buf, "contents", restype=objc_id) # Shared memory, do not release here
-    array = (ctypes.c_char * (src.offset + src.size)).from_address(ptr.value)
-    ret = memoryview(array).cast("B")[src.offset:]
-    
-    return ret
   
   def copy_from_disk(self,dest,src):
     file_name = src.device[::-1]
@@ -221,15 +168,8 @@ class MetalAllocator(LRUAllocator):
   
   def copyin(self, dest:MetalBuffer, src:memoryview):
     for cbuf in self.device.mtl_buffers_in_flight:
-      msg(cbuf[0], "waitUntilCompleted")
       if len(cbuf) > 1: msg_ios(cbuf[1],"waitUntilCompleted")
     self.device.mtl_buffers_in_flight.clear()
-
-    #METAL AND IOS BELOW
-    ptr = msg(dest.buf, "contents", restype=objc_id) # Shared memory, do not release here
-    array = (ctypes.c_char * (dest.offset + dest.size)).from_address(ptr.value)
-    ret = memoryview(array).cast("B")[dest.offset:]
-    ret[:] = src
 
     formatted_hex = ' '.join(f'{b:02x}' for b in src)
     msg_ios("copyin",formatted_hex,dest.buf_ios)
@@ -245,9 +185,7 @@ class MetalDevice(Compiled):
     self.queue = {"queue":[]}
     self.device = libmetal.MTLCreateSystemDefaultDevice()
     self.device_ios = "d"
-    self.mtl_queue = msg(self.device, "newCommandQueueWithMaxCommandBufferCount:", 1024, restype=objc_instance)
     self.mtl_queue_ios = msg_ios(self.device_ios,"newCommandQueueWithMaxCommandBufferCount:",1024,res=new_var())
-    if self.mtl_queue is None: raise RuntimeError("Cannot allocate a new command queue")
     self.mtl_buffers_in_flight: List[Any] = []
 
     from tinygrad.runtime.graph.metal import MetalGraph

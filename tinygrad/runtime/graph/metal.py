@@ -51,9 +51,7 @@ class MetalGraph(GraphRunner):
       prg: CompiledRunner = cast(CompiledRunner, ji.prg)
       icb_command = msg(self.icb, "indirectComputeCommandAtIndex:", j, restype=objc_instance)
       icb_command_ios = msg_ios(self.icb_ios,"indirectComputeCommandAtIndex:",j,res=new_var())
-      all_pipelines.append(prg.clprg.pipeline_state)
       all_pipelines_ios.append(prg.clprg.pipeline_state_ios)
-      msg(icb_command, "setComputePipelineState:", prg.clprg.pipeline_state)
       msg_ios(icb_command_ios, "setComputePipelineState:", prg.clprg.pipeline_state_ios)
       for i,b in enumerate(ji.bufs):
         if b is not None and b not in input_rawbuffers:
@@ -76,7 +74,6 @@ class MetalGraph(GraphRunner):
     self.command_buffer: Any = None
     self.command_buffer_ios: Any = None
     if len(self.vars):
-      self.int_buf_view = self.device.allocator.as_buffer_metal(self.int_buf).cast('i')
       self.int_buf_view_ios = self.device.allocator.as_buffer_ios(self.int_buf).cast('i')
     self.range = to_struct(0, len(self.jit_cache))
 
@@ -113,8 +110,6 @@ class MetalGraph(GraphRunner):
       msg_ios(computeCommand_ios,"concurrentDispatchThreadgroups:threadsPerThreadgroup:",global_size[0],global_size[1],global_size[2],local_size[0],local_size[1],local_size[2])
     
     for j, var in enumerate(self.vars):
-      print("rory j var var_vals[var]? =",j,var,var_vals[var])
-      self.int_buf_view[j] = var_vals[var]
       self.int_buf_view_ios[j] = var_vals[var]
 
 
@@ -128,38 +123,17 @@ class MetalGraph(GraphRunner):
       msg_ios("copyin",formatted_hex,self.int_buf.buf_ios)
     # has to do this?
 
-    command_buffer = msg(self.device.mtl_queue, "commandBuffer", restype=objc_instance)
     command_buffer_ios = msg_ios(self.device.mtl_queue_ios,"commandBuffer",res=new_var())
-    encoder = msg(command_buffer, "computeCommandEncoder", restype=objc_instance)
     encoder_ios = msg_ios(command_buffer_ios,"computeCommandEncoder",res=new_var())
     metal_res = [x.buf for x in all_resources]
     ios_res = [x.buf_ios for x in all_resources]
-    msg(encoder, "useResources:count:usage:", (objc_id * len(metal_res))(*metal_res), len(metal_res),
-        MTLResourceUsage.MTLResourceUsageRead | MTLResourceUsage.MTLResourceUsageWrite)
     msg_ios(encoder_ios,"useResources:count:usage:",*ios_res,
             "MTLResourceUsage.MTLResourceUsageRead | MTLResourceUsage.MTLResourceUsageWrite") #can infer len in objc
 
-    # NOTE: the pipelines likely need to be added to the used resources to fix the crash on M1/M2, but I haven't figured out how
-    # this is a O(n) hack to get them used. what should work is:
-    #encoder.useResources_count_usage_(self.all_pipelines, len(self.all_pipelines), Metal.MTLResourceUsageRead)
-    # but it fails with "Invalid Resource (00000009:kIOGPUCommandBufferCallbackErrorInvalidResource)"
-    # to repro the crash (which can also crash other running GPU apps), run with FIX_METAL_ICB=0
-    if getenv("FIX_METAL_ICB", self.needs_icb_fix):
-      for ps in self.all_pipelines:
-        msg(encoder, "setComputePipelineState:", ps)
-        msg(encoder, "dispatchThreadgroups:threadsPerThreadgroup:", to_struct(0,0,0), to_struct(0,0,0))
-      #for ps in self.all_pipelines_ios:
-        #msg_ios(encoder_ios,"setComputePipelineState:", ps)
-        #msg_ios(encoder_ios, "dispatchThreadgroups:threadsPerThreadgroup:", 0,0,0,0,0,0) this crashes ios
-
-    msg(encoder, "executeCommandsInBuffer:withRange:", self.icb, self.range)
     msg_ios(encoder_ios,"executeCommandsInBuffer:withRange:",self.icb_ios,len(self.jit_cache)) #range is 0-len(jit_cache)
-    msg(encoder, "endEncoding")
     msg_ios(encoder_ios,"endEncoding")
-    msg(command_buffer, "commit")
     msg_ios(command_buffer_ios,"commit")
-    self.command_buffer = command_buffer
     self.command_buffer_ios = command_buffer_ios
 
-    self.device.mtl_buffers_in_flight.append([command_buffer,command_buffer_ios])
+    self.device.mtl_buffers_in_flight.append([None,command_buffer_ios])
     return None

@@ -119,17 +119,13 @@ class BufferCopy(Runner):
   def copy(self, dest, src):
     if src.device.startswith("DISK") and dest.device == "METAL": #TODO, hack for iOS
       dest.allocator.copy_from_disk(dest,src)
-      #return
+      return
     disk_supports_fast_copyout = src.device.startswith("DISK") and hasattr(src.allocator.device, 'io_uring') and \
       getattr(src.allocator.device, 'fd', None) is not None
     if src.device.startswith("DISK") and hasattr(dest.allocator, 'copy_from_disk') and disk_supports_fast_copyout and src.nbytes >= 4096:
       dest.allocator.copy_from_disk(dest._buf, src._buf, src.nbytes)
     elif src.device.startswith("DISK") and hasattr(dest.allocator, 'as_buffer'):
       # fast(ish) path, uses readinto in diskbuffers
-      if dest.device == "METAL": #(does metal and not ios, so can compare the results?)
-      #   #dest.allocator.copy_from_disk(dest._buf, src._buf, src.nbytes)
-         src.allocator.copyout(dest.allocator.as_buffer_metal(dest._buf), src._buf)
-         return
       src.allocator.copyout(dest.allocator.as_buffer(dest._buf), src._buf)
     else:
       dest.copyin(src.as_buffer(allow_zero_copy=True))  # may allocate a CPU buffer depending on allow_zero_copy

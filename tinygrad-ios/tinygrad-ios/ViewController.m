@@ -54,6 +54,12 @@ char *charArrayFromMTLBuffer(id<MTLBuffer> buffer) {
     return hexString;
 }
 
+char *charArrayFromNSInteger(NSInteger value) {
+    char *charArray = malloc(20);
+    snprintf(charArray, 20, "%ld", (long)value);
+    return charArray;
+}
+
 - (void)startHTTPServer {
     self.socket = CFSocketCreate(NULL, PF_INET, SOCK_STREAM, IPPROTO_TCP, kCFSocketAcceptCallBack, AcceptCallback, NULL);
     if (!self.socket) {
@@ -180,6 +186,18 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 char *fullResponse = malloc(totalLength);
                 strcpy(fullResponse, response);
                 strcat(fullResponse, bytes);
+                send(handle, fullResponse, strlen(fullResponse), 0);
+                close(handle);
+                [queue removeAllObjects];
+                return;
+            } else if([queue[j][1] isEqualToString:@"maxTotalThreadsPerThreadgroup"]) {
+                NSInteger max_size = [objects[queue[j][0]] maxTotalThreadsPerThreadgroup];
+                char *res = charArrayFromNSInteger(max_size);
+                char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
+                size_t totalLength = strlen(response) + strlen(res) + 1;
+                char *fullResponse = malloc(totalLength);
+                strcpy(fullResponse, response);
+                strcat(fullResponse, res);
                 send(handle, fullResponse, strlen(fullResponse), 0);
                 close(handle);
                 [queue removeAllObjects];

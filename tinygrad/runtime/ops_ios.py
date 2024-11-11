@@ -5,7 +5,7 @@ from tinygrad.device import Compiled, Compiler, LRUAllocator, Buffer
 from tinygrad.renderer.cstyle import MetalRenderer
 import json, gzip, requests, time
 from tinygrad.dtype import dtypes
-from tinygrad.helpers import dedup
+from tinygrad.helpers import dedup, prod
 from tinygrad.engine.realize import ExecItem, CompiledRunner
 from tinygrad.engine.jit import GraphRunner, GraphException
 from tinygrad.ops import Variable
@@ -29,6 +29,11 @@ class IOSProgram:
     descriptor,0,"none",res=new_var())
 
   def __call__(self, *bufs, global_size:Tuple[int,int,int]=(1,1,1), local_size:Tuple[int,int,int]=(1,1,1), vals:Tuple[int, ...]=(), wait=False):
+    max_total_threads = self.device.msg(self.pipeline_state, "maxTotalThreadsPerThreadgroup")
+    if prod(local_size) > int(max_total_threads):
+      exec_width = 0#todo self.device.msg(self.pipeline_state, "threadExecutionWidth")
+      memory_length = 0#todo self.device.msg(self.pipeline_state, "staticThreadgroupMemoryLength")
+      raise RuntimeError(f"local size {local_size} bigger than {max_total_threads} with exec width {exec_width} memory length {memory_length}")
     command_buffer = self.device.msg(self.device.mtl_queue,"commandBuffer",res=new_var())
     encoder = self.device.msg(command_buffer,"computeCommandEncoder",res=new_var())
     self.device.msg(encoder,"setComputePipelineState:",self.pipeline_state)
@@ -178,7 +183,7 @@ class IOSDevice(Compiled):
     for x in args: req.append(x)
     if res != None: req.append(res)
     self.queue["queue"].append(req)
-    if selector == "copyout" or len(self.queue["queue"]) > 1000: #todo, don't send bytes as a string etc
+    if selector in ["copyout","maxTotalThreadsPerThreadgroup"] or len(self.queue["queue"]) > 1000: #todo, don't send bytes as a string etc
       res2 = self.send_queue()
       self.queue = {"queue":[]}
       if res2 != None: return res2

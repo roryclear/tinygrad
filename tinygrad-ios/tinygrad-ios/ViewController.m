@@ -173,8 +173,8 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 }
                 NSData *data = [NSData dataWithBytesNoCopy:bytes length:length freeWhenDone:YES];
                 memcpy([(id<MTLBuffer>)objects[queue[j][3]] contents], [data bytes], [data length]);
-            } else if([queue[j][0] isEqualToString:@"copyout"]) {
-                char *bytes = charArrayFromMTLBuffer(objects[queue[j][1]]);
+            } else if([queue[j][1] isEqualToString:@"copyout"]) {
+                char *bytes = charArrayFromMTLBuffer(objects[queue[j][0]]);
                 char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
                 size_t totalLength = strlen(response) + strlen(bytes) + 1;
                 char *fullResponse = malloc(totalLength);

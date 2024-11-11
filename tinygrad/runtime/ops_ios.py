@@ -60,7 +60,7 @@ class IOSAllocator(LRUAllocator):
   def as_buffer(self, src:IOSBuffer) -> memoryview:
     for cbuf in self.device.mtl_buffers_in_flight: self.device.msg(cbuf,"waitUntilCompleted")
     self.device.mtl_buffers_in_flight.clear()
-    byte_str = self.device.msg("copyout",src.buf)
+    byte_str = self.device.msg(src.buf,"copyout")
     byte_values = bytearray(int(b, 16) for b in byte_str.split())
     return memoryview(byte_values[:src.size]) 
   
@@ -178,7 +178,7 @@ class IOSDevice(Compiled):
     for x in args: req.append(x)
     if res != None: req.append(res)
     self.queue["queue"].append(req)
-    if ptr == "copyout" or len(self.queue["queue"]) > 1000: #todo, don't send bytes as a string etc
+    if selector == "copyout" or len(self.queue["queue"]) > 1000: #todo, don't send bytes as a string etc
       res2 = self.send_queue()
       self.queue = {"queue":[]}
       if res2 != None: return res2

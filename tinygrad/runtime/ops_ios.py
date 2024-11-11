@@ -2,7 +2,7 @@ from __future__ import annotations
 import functools
 from typing import List, Any, Tuple, Optional, cast, Dict
 from tinygrad.device import Compiled, Compiler, LRUAllocator, Buffer
-from tinygrad.renderer.cstyle import MetalRenderer
+from tinygrad.renderer.cstyle import iOSRenderer
 import json, gzip, requests, time
 from tinygrad.dtype import dtypes
 from tinygrad.helpers import dedup, prod
@@ -45,6 +45,10 @@ class IOSProgram:
     self.device.msg(encoder,"endEncoding")
     self.device.msg(command_buffer,"commit")
     self.device.mtl_buffers_in_flight.append(command_buffer)
+    if wait:
+      for cbuf in self.device.mtl_buffers_in_flight: self.device.msg(cbuf,"waitUntilCompleted")
+      self.device.mtl_buffers_in_flight.clear()
+      return float(self.device.msg(command_buffer,"elapsed_time"))
 
 class IOSBuffer:
   def __init__(self, buf:Any, size:int, offset=0): 
@@ -164,6 +168,10 @@ class IOSGraph(GraphRunner):
     self.command_buffer = command_buffer
 
     self.device.mtl_buffers_in_flight.append(command_buffer)
+    if wait:
+      for cbuf in self.device.mtl_buffers_in_flight: self.device.msg(cbuf,"waitUntilCompleted")
+      self.device.mtl_buffers_in_flight.clear()
+      return float(self.device.msg(command_buffer,"elapsed_time"))
     return None
 
 class IOSDevice(Compiled):
@@ -173,7 +181,7 @@ class IOSDevice(Compiled):
     self.mtl_queue = self.msg(self.device,"newCommandQueueWithMaxCommandBufferCount:",1024,res=new_var())
     self.mtl_buffers_in_flight: List[Any] = []
 
-    super().__init__(device, IOSAllocator(self), MetalRenderer(), Compiler(),
+    super().__init__(device, IOSAllocator(self), iOSRenderer(), Compiler(),
                      functools.partial(IOSProgram, self), IOSGraph)
     
 
@@ -183,7 +191,7 @@ class IOSDevice(Compiled):
     for x in args: req.append(x)
     if res != None: req.append(res)
     self.queue["queue"].append(req)
-    if selector in ["copyout","maxTotalThreadsPerThreadgroup"] or len(self.queue["queue"]) > 1000: #todo, don't send bytes as a string etc
+    if selector in ["copyout","maxTotalThreadsPerThreadgroup","elapsed_time"] or len(self.queue["queue"]) > 1000: #todo, don't send bytes as a string etc
       res2 = self.send_queue()
       self.queue = {"queue":[]}
       if res2 != None: return res2

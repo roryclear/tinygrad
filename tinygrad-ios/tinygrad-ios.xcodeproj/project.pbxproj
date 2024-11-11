@@ -14,7 +14,6 @@
 		BEB24A102CCE95EB006E5750 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BEB24A0F2CCE95EB006E5750 /* Assets.xcassets */; };
 		BEB24A132CCE95EB006E5750 /* Base in Resources */ = {isa = PBXBuildFile; fileRef = BEB24A122CCE95EB006E5750 /* Base */; };
 		BEB24A162CCE95EB006E5750 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = BEB24A152CCE95EB006E5750 /* main.m */; };
-		BEB24A1D2CCEE55B006E5750 /* 113965bb5fe7074edc9ca25991e7ad35 in Resources */ = {isa = PBXBuildFile; fileRef = BEB24A1C2CCEE55B006E5750 /* 113965bb5fe7074edc9ca25991e7ad35 */; };
 		E2CC37721693440B8C1AACE2 /* Pods_tinygrad_ios.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 70C96A487DD4B6B6AB6C6813 /* Pods_tinygrad_ios.framework */; };
 /* End PBXBuildFile section */
 
@@ -33,7 +32,6 @@
 		BEB24A122CCE95EB006E5750 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		BEB24A142CCE95EB006E5750 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		BEB24A152CCE95EB006E5750 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
-		BEB24A1C2CCEE55B006E5750 /* 113965bb5fe7074edc9ca25991e7ad35 */ = {isa = PBXFileReference; lastKnownFileType = file; path = 113965bb5fe7074edc9ca25991e7ad35; sourceTree = "<group>"; };
 		FEB863AF0C7FADCB0E4C9E8A /* Pods-tinygrad-ios.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-tinygrad-ios.release.xcconfig"; path = "Target Support Files/Pods-tinygrad-ios/Pods-tinygrad-ios.release.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -61,7 +59,6 @@
 			isa = PBXGroup;
 			children = (
 				BEB24A022CCE95EA006E5750 /* tinygrad-ios */,
-				BEB24A1C2CCEE55B006E5750 /* 113965bb5fe7074edc9ca25991e7ad35 */,
 				BEB24A012CCE95EA006E5750 /* Products */,
 				EAFE397ADD848305A2AA6212 /* Pods */,
 				57DDFA0738D8A7728EA245BB /* Frameworks */,
@@ -164,7 +161,6 @@
 			files = (
 				BEB24A102CCE95EB006E5750 /* Assets.xcassets in Resources */,
 				BEB24A132CCE95EB006E5750 /* Base in Resources */,
-				BEB24A1D2CCEE55B006E5750 /* 113965bb5fe7074edc9ca25991e7ad35 in Resources */,
 				BEB24A0E2CCE95EA006E5750 /* Base in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

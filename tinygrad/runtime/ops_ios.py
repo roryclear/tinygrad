@@ -178,7 +178,7 @@ class IOSGraph(GraphRunner):
 class IOSDevice(Compiled):
   def __init__(self, device:str):
     self.device = "d"
-    self.queue = {"queue":[]}
+    self.queue = []
     self.mtl_queue = self.msg(self.device,"newCommandQueueWithMaxCommandBufferCount:",1024,res=new_var())
     self.mtl_buffers_in_flight: List[Any] = []
 
@@ -191,17 +191,18 @@ class IOSDevice(Compiled):
     req.append(len(args))
     for x in args: req.append(x)
     if res != None: req.append(res)
-    self.queue["queue"].append(req)
-    if selector in ["copyout","maxTotalThreadsPerThreadgroup","elapsed_time"] or len(self.queue["queue"]) > 1000: #todo, don't send bytes as a string etc
+    #print(req)
+    self.queue.append(req)
+    if selector in ["copyout","maxTotalThreadsPerThreadgroup","elapsed_time"] or len(self.queue) > 1000: #todo, don't send bytes as a string etc
       res2 = self.send_queue()
-      self.queue = {"queue":[]}
+      self.queue = []
       if res2 != None: return res2
     return res
 
   def send_queue(self):
     url = "http://192.168.1.113:8081" #your iOS device's local IP
     #url = "http://192.168.1.1:8081"
-    payload = json.dumps(self.queue) # Compress the JSON string 
+    payload = json.dumps(self.queue) # Compress the JSON string
     compressed_payload = gzip.compress(payload.encode('utf-8'))
     status = 400
     while status != 200:

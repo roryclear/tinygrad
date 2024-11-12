@@ -141,10 +141,10 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             return;
         }
 
-        NSError *jsonError = nil;
-        NSDictionary *jsonDict = [NSJSONSerialization JSONObjectWithData:bodyData options:0 error:&jsonError];
+        NSError *error = nil;
+        NSArray *req_queue = [NSJSONSerialization JSONObjectWithData:bodyData options:0 error:&error];
         
-        if (!jsonDict || jsonError) {
+        if (!req_queue || error) {
             const char *response = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\n\r\nInvalid request: Missing or malformed body.";
             send(handle, response, strlen(response), 0);
             close(handle);
@@ -153,30 +153,29 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             return;
         }
         
-        NSArray *req_queue = jsonDict[@"queue"];
         [queue addObjectsFromArray:req_queue];
-        for(int j = 0; j < [queue count]; j++) {
-            if([queue[j][1] isEqualToString:@"dispatchThreadgroups:threadsPerThreadgroup:"]){ //TODO, don't know how to not hardcode yet, copies twice atm too
-                [objects[queue[j][0]] dispatchThreadgroups: MTLSizeMake([queue[j][3] intValue], [queue[j][4] intValue], [queue[j][5] intValue]) threadsPerThreadgroup: MTLSizeMake([queue[j][6] intValue], [queue[j][7] intValue], [queue[j][8] intValue]) ];
-            } else if([queue[j][1] isEqualToString:@"concurrentDispatchThreadgroups:threadsPerThreadgroup:"]){
-                [objects[queue[j][0]] concurrentDispatchThreadgroups: MTLSizeMake([queue[j][3] intValue], [queue[j][4] intValue], [queue[j][5] intValue]) threadsPerThreadgroup: MTLSizeMake([queue[j][6] intValue], [queue[j][7] intValue], [queue[j][8] intValue]) ];
-            } else if([queue[j][1] isEqualToString:@"useResources:count:usage:"]){
-                NSInteger count = [queue[j] count] - 4;
+        for(int i = 0; i < [queue count]; i++) {
+            if([queue[i][1] isEqualToString:@"dispatchThreadgroups:threadsPerThreadgroup:"]){ //TODO, don't know how to not hardcode yet, copies twice atm too
+                [objects[queue[i][0]] dispatchThreadgroups: MTLSizeMake([queue[i][3] intValue], [queue[i][4] intValue], [queue[i][5] intValue]) threadsPerThreadgroup: MTLSizeMake([queue[i][6] intValue], [queue[i][7] intValue], [queue[i][8] intValue]) ];
+            } else if([queue[i][1] isEqualToString:@"concurrentDispatchThreadgroups:threadsPerThreadgroup:"]){
+                [objects[queue[i][0]] concurrentDispatchThreadgroups: MTLSizeMake([queue[i][3] intValue], [queue[i][4] intValue], [queue[i][5] intValue]) threadsPerThreadgroup: MTLSizeMake([queue[i][6] intValue], [queue[i][7] intValue], [queue[i][8] intValue]) ];
+            } else if([queue[i][1] isEqualToString:@"useResources:count:usage:"]){
+                NSInteger count = [queue[i] count] - 4;
                 MTLResourceUsage usage = MTLResourceUsageRead | MTLResourceUsageWrite;
                 NSMutableArray<id<MTLResource>> *resources = [NSMutableArray array];
-                for(int i = 0; i < count; i++){
-                    [resources addObject:objects[queue[j][i+3]]];
+                for(int x = 0; x < count; x++){
+                    [resources addObject:objects[queue[i][x+3]]];
                 }
                 __unsafe_unretained id<MTLResource> resourceArray[resources.count];
                 [resources getObjects:resourceArray range:NSMakeRange(0, resources.count)];
-                [objects[queue[j][0]] useResources:resourceArray count:count usage:usage];
-            } else if([queue[j][0] isEqualToString:@"delete"]) {
+                [objects[queue[i][0]] useResources:resourceArray count:count usage:usage];
+            } else if([queue[i][0] isEqualToString:@"delete"]) {
                 [objects removeAllObjects];
                 [objects setObject: device forKey:@"d"]; //NEED TO KEEP DEVICE
-            } else if([queue[j][1] isEqualToString:@"executeCommandsInBuffer:withRange:"]) {
-                [objects[queue[j][0]] executeCommandsInBuffer:objects[queue[j][3]] withRange:NSMakeRange(0,[queue[j][4] intValue])];
-            } else if([queue[j][0] isEqualToString:@"copyin"]) {
-                NSArray<NSString *> *hexArray = [queue[j][1] componentsSeparatedByString:@" "];
+            } else if([queue[i][1] isEqualToString:@"executeCommandsInBuffer:withRange:"]) {
+                [objects[queue[i][0]] executeCommandsInBuffer:objects[queue[i][3]] withRange:NSMakeRange(0,[queue[i][4] intValue])];
+            } else if([queue[i][0] isEqualToString:@"copyin"]) {
+                NSArray<NSString *> *hexArray = [queue[i][1] componentsSeparatedByString:@" "];
                 NSUInteger length = hexArray.count;
                 uint8_t *bytes = malloc(length);
                 for (NSUInteger i = 0; i < length; i++) {
@@ -185,9 +184,9 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                     bytes[i] = (uint8_t)byteValue;
                 }
                 NSData *data = [NSData dataWithBytesNoCopy:bytes length:length freeWhenDone:YES];
-                memcpy([(id<MTLBuffer>)objects[queue[j][3]] contents], [data bytes], [data length]);
-            } else if([queue[j][1] isEqualToString:@"copyout"]) {
-                char *bytes = charArrayFromMTLBuffer(objects[queue[j][0]]);
+                memcpy([(id<MTLBuffer>)objects[queue[i][3]] contents], [data bytes], [data length]);
+            } else if([queue[i][1] isEqualToString:@"copyout"]) {
+                char *bytes = charArrayFromMTLBuffer(objects[queue[i][0]]);
                 char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
                 size_t totalLength = strlen(response) + strlen(bytes) + 1;
                 char *fullResponse = malloc(totalLength);
@@ -197,8 +196,8 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 close(handle);
                 [queue removeAllObjects];
                 return;
-            } else if([queue[j][1] isEqualToString:@"maxTotalThreadsPerThreadgroup"]) {
-                NSInteger max_size = [objects[queue[j][0]] maxTotalThreadsPerThreadgroup];
+            } else if([queue[i][1] isEqualToString:@"maxTotalThreadsPerThreadgroup"]) {
+                NSInteger max_size = [objects[queue[i][0]] maxTotalThreadsPerThreadgroup];
                 char *res = charArrayFromNSInteger(max_size);
                 char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
                 size_t totalLength = strlen(response) + strlen(res) + 1;
@@ -209,8 +208,8 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 close(handle);
                 [queue removeAllObjects];
                 return;
-            } else if([queue[j][1] isEqualToString:@"elapsed_time"]){
-                float result = (float)([objects[queue[j][0]] GPUEndTime] - [objects[queue[j][0]] GPUStartTime]);
+            } else if([queue[i][1] isEqualToString:@"elapsed_time"]){
+                float result = (float)([objects[queue[i][0]] GPUEndTime] - [objects[queue[i][0]] GPUStartTime]);
                 char *res = charArrayFromFloat(result);
                 char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
                 size_t totalLength = strlen(response) + strlen(res) + 1;
@@ -221,62 +220,62 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 close(handle);
                 [queue removeAllObjects];
                 return;
-            } else if([queue[j][0] isEqualToString:@"memcpy"]) {
-                if ([objects objectForKey:queue[j][3]] == nil) {
-                    [objects setObject:[NSData dataWithContentsOfURL:[[NSBundle mainBundle] URLForResource:queue[j][3] withExtension:nil]] forKey:queue[j][3]];
+            } else if([queue[i][0] isEqualToString:@"memcpy"]) {
+                if ([objects objectForKey:queue[i][3]] == nil) {
+                    [objects setObject:[NSData dataWithContentsOfURL:[[NSBundle mainBundle] URLForResource:queue[i][3] withExtension:nil]] forKey:queue[i][3]];
                 }
-                memcpy([(id<MTLBuffer>)objects[queue[j][1]] contents] + 0, [(NSData *)objects[queue[j][3]] bytes] + [queue[j][4] intValue], [queue[j][5] intValue]);
+                memcpy([(id<MTLBuffer>)objects[queue[i][1]] contents] + 0, [(NSData *)objects[queue[i][3]] bytes] + [queue[i][4] intValue], [queue[i][5] intValue]);
             } else {
-                SEL selector = NSSelectorFromString(queue[j][1]);
+                SEL selector = NSSelectorFromString(queue[i][1]);
                 NSMethodSignature *signature;
                 NSInvocation *invocation;
-                if ([objects objectForKey:queue[j][0]]) {
-                    signature = [(id)objects[queue[j][0]] methodSignatureForSelector:selector];
+                if ([objects objectForKey:queue[i][0]]) {
+                    signature = [(id)objects[queue[i][0]] methodSignatureForSelector:selector];
                     invocation = [NSInvocation invocationWithMethodSignature:signature];
                     [invocation setSelector:selector];
-                    [invocation setTarget:objects[queue[j][0]]];
+                    [invocation setTarget:objects[queue[i][0]]];
                 } else {
-                    Class class = NSClassFromString(queue[j][0]);
+                    Class class = NSClassFromString(queue[i][0]);
                     NSMethodSignature *signature = [class methodSignatureForSelector:selector];
                     invocation = [NSInvocation invocationWithMethodSignature:signature];
                     [invocation setSelector:selector];
                     [invocation setTarget:class];
                 }
-                for(int i = 3; i < 3+[queue[j][2] intValue]; i++){
-                    if ([queue[j][i] isKindOfClass:[NSNumber class]]) {
-                        [invocation setArgument:&(NSInteger){[queue[j][i] intValue]} atIndex:i-1];
+                for(int j = 3; j < 3+[queue[i][2] intValue]; j++){
+                    if ([queue[i][j] isKindOfClass:[NSNumber class]]) {
+                        [invocation setArgument:&(NSInteger){[queue[i][j] intValue]} atIndex:j-1];
                         continue;
                     }
-                    if ([queue[j][i] isKindOfClass:[NSString class]]) { //If it's a string, could be a key or a string string
-                        NSLog(@"%@",queue[j][i]);
-                        if ([objects objectForKey:queue[j][i]]) {
-                            [invocation setArgument:&(id){ objects[queue[j][i]] } atIndex:i-1];
-                        } else if([queue[j][i] isEqualToString:@"error"] || [queue[j][i] isEqualToString:@"none"]) { //todo just use a dict?
+                    if ([queue[i][j] isKindOfClass:[NSString class]]) { //If it's a string, could be a key or a string string
+                        NSLog(@"%@",queue[i][j]);
+                        if ([objects objectForKey:queue[i][j]]) {
+                            [invocation setArgument:&(id){ objects[queue[i][j]] } atIndex:j-1];
+                        } else if([queue[i][j] isEqualToString:@"error"] || [queue[i][j] isEqualToString:@"none"]) { //todo just use a dict?
                             NSError *error = nil;
-                            [invocation setArgument:&error atIndex:i-1];
-                        } else if([queue[j][i] isEqualToString:@"false"]) {
-                            [invocation setArgument:&(BOOL){NO} atIndex:i-1];
-                        } else if([queue[j][i] isEqualToString:@"true"]) {
-                            [invocation setArgument:&(BOOL){YES} atIndex:i-1];
-                        } else if([queue[j][i] isEqualToString:@"MTLIndirectCommandTypeConcurrentDispatch"]) {
-                            [invocation setArgument:(&(MTLIndirectCommandType){MTLIndirectCommandTypeConcurrentDispatch}) atIndex:i-1];
-                        } else if([queue[j][i] isEqualToString:@"MTLResourceCPUCacheModeDefaultCache"]) {
-                            [invocation setArgument:(&(MTLResourceOptions){MTLResourceCPUCacheModeDefaultCache}) atIndex:i-1];
-                        } else if([queue[j][i] isEqualToString:@"MTLResourceUsage.MTLResourceUsageRead | MTLResourceUsage.MTLResourceUsageWrite"]) {
-                            [invocation setArgument:(&(MTLResourceUsage){MTLResourceUsageRead | MTLResourceUsageWrite}) atIndex:i-1];
-                        } else if(i == 3 && [queue[j][1] isEqualToString:@"setBytes:length:atIndex:"]) { // string to bytes
-                            uint8_t *byteArgument = convertNSStringToBytes(queue[j][3]);
-                            [invocation setArgument:&byteArgument atIndex:i-1];
+                            [invocation setArgument:&error atIndex:j-1];
+                        } else if([queue[i][j] isEqualToString:@"false"]) {
+                            [invocation setArgument:&(BOOL){NO} atIndex:j-1];
+                        } else if([queue[i][j] isEqualToString:@"true"]) {
+                            [invocation setArgument:&(BOOL){YES} atIndex:j-1];
+                        } else if([queue[i][j] isEqualToString:@"MTLIndirectCommandTypeConcurrentDispatch"]) {
+                            [invocation setArgument:(&(MTLIndirectCommandType){MTLIndirectCommandTypeConcurrentDispatch}) atIndex:j-1];
+                        } else if([queue[i][j] isEqualToString:@"MTLResourceCPUCacheModeDefaultCache"]) {
+                            [invocation setArgument:(&(MTLResourceOptions){MTLResourceCPUCacheModeDefaultCache}) atIndex:j-1];
+                        } else if([queue[i][j] isEqualToString:@"MTLResourceUsage.MTLResourceUsageRead | MTLResourceUsage.MTLResourceUsageWrite"]) {
+                            [invocation setArgument:(&(MTLResourceUsage){MTLResourceUsageRead | MTLResourceUsageWrite}) atIndex:j-1];
+                        } else if(j == 3 && [queue[i][1] isEqualToString:@"setBytes:length:atIndex:"]) { // string to bytes
+                            uint8_t *byteArgument = convertNSStringToBytes(queue[i][3]);
+                            [invocation setArgument:&byteArgument atIndex:j-1];
                         } else {
-                            [invocation setArgument:&(NSString *){queue[j][i]} atIndex:i-1]; //IF NOT IN OBJECTS
+                            [invocation setArgument:&(NSString *){queue[i][j]} atIndex:j-1]; //IF NOT IN OBJECTS
                         }
                     }
                 }
                 [invocation invoke];
-                if ([queue[j] count] == 4+[queue[j][2] intValue]) {
+                if ([queue[i] count] == 4+[queue[i][2] intValue]) {
                     __unsafe_unretained id result = nil;
                     [invocation getReturnValue:&result];
-                    [objects setObject:result forKey:[queue[j] lastObject]];
+                    [objects setObject:result forKey:[queue[i] lastObject]];
                 }
             }
         }
@@ -288,6 +287,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
 }
 
 @end
+
 
 
 

@@ -29,11 +29,12 @@ class IOSProgram:
     descriptor,0,"none",res=new_var())
 
   def __call__(self, *bufs, global_size:Tuple[int,int,int]=(1,1,1), local_size:Tuple[int,int,int]=(1,1,1), vals:Tuple[int, ...]=(), wait=False):
-    max_total_threads = self.device.msg(self.pipeline_state, "maxTotalThreadsPerThreadgroup")
-    if prod(local_size) > int(max_total_threads):
-      exec_width = 0#todo self.device.msg(self.pipeline_state, "threadExecutionWidth")
-      memory_length = 0#todo self.device.msg(self.pipeline_state, "staticThreadgroupMemoryLength")
-      raise RuntimeError(f"local size {local_size} bigger than {max_total_threads} with exec width {exec_width} memory length {memory_length}")
+    if wait: #todo, can potentially crash iOS
+      max_total_threads = self.device.msg(self.pipeline_state, "maxTotalThreadsPerThreadgroup")
+      if prod(local_size) > int(max_total_threads):
+        exec_width = 0#todo self.device.msg(self.pipeline_state, "threadExecutionWidth")
+        memory_length = 0#todo self.device.msg(self.pipeline_state, "staticThreadgroupMemoryLength")
+        raise RuntimeError(f"local size {local_size} bigger than {max_total_threads} with exec width {exec_width} memory length {memory_length}")
     command_buffer = self.device.msg(self.device.mtl_queue,"commandBuffer",res=new_var())
     encoder = self.device.msg(command_buffer,"computeCommandEncoder",res=new_var())
     self.device.msg(encoder,"setComputePipelineState:",self.pipeline_state)

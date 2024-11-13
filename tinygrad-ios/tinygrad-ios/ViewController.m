@@ -171,6 +171,15 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 __unsafe_unretained id<MTLResource> resourceArray[resources.count];
                 [resources getObjects:resourceArray range:NSMakeRange(0, resources.count)];
                 [objects[queue[i][0]] useResources:resourceArray count:count usage:usage];
+            } else if([queue[i][1] isEqualToString:@"file_exists"]) {
+                if ([[NSFileManager defaultManager] fileExistsAtPath:[[NSBundle mainBundle] pathForResource:queue[i][0] ofType:nil]]) {
+                    NSLog(@"File exists");
+                    char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nfile found";
+                    send(handle, response, strlen(response), 0);
+                    close(handle);
+                    [queue removeAllObjects];
+                    return;
+                }
             } else if([queue[i][0] isEqualToString:@"delete"]) {
                 [objects removeAllObjects];
                 [objects setObject: device forKey:@"d"]; //NEED TO KEEP DEVICE

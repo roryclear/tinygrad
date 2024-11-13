@@ -76,7 +76,15 @@ class IOSAllocator(LRUAllocator):
     return memoryview(byte_values[:src.size]) 
   
   def copy_from_disk(self,dest,src):
-    self.device.msg("memcpy",str(dest._buf.buf),src.device[src.device.rfind("/")+1:],src.offset,src.nbytes)
+    file_name = src.device[src.device.rfind("/")+1:]
+    if file_name in self.device.files:
+      self.device.msg("memcpy",str(dest._buf.buf),file_name,src.offset,src.nbytes)
+    elif self.device.msg(file_name,"file_exists"):
+      self.device.files.add(file_name)
+      self.device.msg("memcpy",str(dest._buf.buf),file_name,src.offset,src.nbytes)
+    else:
+      print("file",file_name,"not found in IOS app bundle, copy it in from tinygrad cache")
+      exit()
   
   def copyin(self, dest:IOSBuffer, src:memoryview):
     for cbuf in self.device.mtl_buffers_in_flight: self.device.msg(cbuf,"waitUntilCompleted")
@@ -176,6 +184,7 @@ class IOSDevice(Compiled):
   def __init__(self, device:str):
     self.device = "d"
     self.queue = []
+    self.files = set()
     self.mtl_queue = self.msg(self.device,"newCommandQueueWithMaxCommandBufferCount:",1024,res=new_var())
     self.mtl_buffers_in_flight: List[Any] = []
 
@@ -189,7 +198,7 @@ class IOSDevice(Compiled):
     for x in args: req.append(x)
     if res != None: req.append(res)
     self.queue.append(req)
-    if selector in ["copyout","maxTotalThreadsPerThreadgroup","elapsed_time"] or len(self.queue) > 1000: #todo, don't send bytes as a string etc
+    if selector in ["copyout","maxTotalThreadsPerThreadgroup","elapsed_time","file_exists"] or len(self.queue) > 1000: #todo, don't send bytes as a string etc
       res2 = self.send_queue()
       self.queue = []
       if res2 != None: return res2

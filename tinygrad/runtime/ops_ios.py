@@ -18,6 +18,7 @@ def new_var():
 class IOSProgram:
   def __init__(self, device:IOSDevice, name:str, lib:bytes):
     self.device, self.name, self.lib = device, name, lib
+    self.device.msg("delete_files","0") #delete weights after copying to metal buffer, 
     options = self.device.msg("MTLCompileOptions","new",res=new_var())
     code_ns_str = lib.decode()
     self.library = self.device.msg("d","newLibraryWithSource:options:error:",code_ns_str,options,"error",res=new_var())
@@ -75,11 +76,7 @@ class IOSAllocator(LRUAllocator):
     return memoryview(byte_values[:src.size]) 
   
   def copy_from_disk(self,dest,src):
-    file_name = src.device[::-1]
-    file_name = file_name[:file_name.index("/")]
-    file_name = file_name[::-1]
-    buf_name = str(dest._buf.buf)
-    self.device.msg("memcpy",buf_name,file_name,src.offset,src.nbytes)
+    self.device.msg("memcpy",str(dest._buf.buf),src.device[src.device.rfind("/")+1:],src.offset,src.nbytes)
   
   def copyin(self, dest:IOSBuffer, src:memoryview):
     for cbuf in self.device.mtl_buffers_in_flight: self.device.msg(cbuf,"waitUntilCompleted")
@@ -191,7 +188,6 @@ class IOSDevice(Compiled):
     req.append(len(args))
     for x in args: req.append(x)
     if res != None: req.append(res)
-    #print(req)
     self.queue.append(req)
     if selector in ["copyout","maxTotalThreadsPerThreadgroup","elapsed_time"] or len(self.queue) > 1000: #todo, don't send bytes as a string etc
       res2 = self.send_queue()

@@ -17,12 +17,14 @@ id<MTLDevice> device;
 id<MTLCommandQueue> command_queue;
 MTLComputePipelineDescriptor *desc;
 NSMutableArray *queue;
+NSMutableArray *files;
 
 - (void)viewDidLoad {
     objects = [[NSMutableDictionary alloc] init];
     device = MTLCreateSystemDefaultDevice();
     [objects setObject: device forKey:@"d"]; //DEVICE
     queue = [[NSMutableArray alloc] init];
+    files = [[NSMutableArray alloc] init];
     [super viewDidLoad];
     [self startHTTPServer];
 }
@@ -223,8 +225,14 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             } else if([queue[i][0] isEqualToString:@"memcpy"]) {
                 if ([objects objectForKey:queue[i][3]] == nil) {
                     [objects setObject:[NSData dataWithContentsOfURL:[[NSBundle mainBundle] URLForResource:queue[i][3] withExtension:nil]] forKey:queue[i][3]];
+                    [files addObject: queue[i][3]];
                 }
                 memcpy([(id<MTLBuffer>)objects[queue[i][1]] contents] + 0, [(NSData *)objects[queue[i][3]] bytes] + [queue[i][4] intValue], [queue[i][5] intValue]);
+            } else if([queue[i][0] isEqualToString:@"delete_files"]){ //delete weights after copying to metal buffer
+                for(int j = 0; j < [files count]; j++) {
+                    [objects removeObjectForKey:files[j]];
+                }
+                files = [[NSMutableArray alloc] init];
             } else {
                 SEL selector = NSSelectorFromString(queue[i][1]);
                 NSMethodSignature *signature;

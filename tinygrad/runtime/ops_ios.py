@@ -83,8 +83,7 @@ class IOSAllocator(LRUAllocator):
       self.device.files.add(file_name)
       self.device.msg("memcpy",str(dest._buf.buf),file_name,src.offset,src.nbytes)
     else:
-      print("file",file_name,"not found in IOS app bundle, copy it in from tinygrad cache")
-      exit()
+      self.device.send_bytes(str(dest._buf.buf),src._buf._buf().tobytes(),src.nbytes)
   
   def copyin(self, dest:IOSBuffer, src:memoryview):
     for cbuf in self.device.mtl_buffers_in_flight: self.device.msg(cbuf,"waitUntilCompleted")
@@ -204,6 +203,25 @@ class IOSDevice(Compiled):
       if res2 != None: return res2
     return res
 
+  def send_bytes(self,dest,data,size):
+    self.send_queue()
+    self.queue = []
+    url = "http://192.168.1.113:8081/bytes/" + str(size) + "/" + dest
+    status = 400
+    while status != 200:
+      try:
+        headers = {}
+        response = requests.post(url, data=data,headers=headers,timeout=3600)
+        if response.status_code == 200:
+            status = 200
+            if len(response.text) > 0:
+              return response.text
+        else:
+            time.sleep(0.1)
+      except requests.exceptions.RequestException as e:
+        time.sleep(0.2)
+    return
+
   def send_queue(self):
     url = "http://192.168.1.113:8081" #your iOS device's local IP
     #url = "http://192.168.1.1:8081"
@@ -223,3 +241,5 @@ class IOSDevice(Compiled):
       except requests.exceptions.RequestException as e:
         time.sleep(0.2)
     return
+
+

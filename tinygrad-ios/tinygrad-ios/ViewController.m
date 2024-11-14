@@ -110,24 +110,49 @@ void printBufferBytes(id<MTLBuffer> buffer) {
     NSLog(@"Buffer bytes: %@", byteString);
 }
 
+void printHexBytes(CFMutableDataRef data) {
+    const UInt8 *bytes = CFDataGetBytePtr(data);
+    CFIndex length = CFDataGetLength(data);
+    NSMutableString *hexString = [NSMutableString stringWithCapacity:length * 2];
+    for (CFIndex i = 0; i < length; i++) {
+        [hexString appendFormat:@"%02x", bytes[i]];
+    }
+    NSLog(@"Hex bytes: %@", hexString);
+}
+
 
 static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFDataRef address, const void *data, void *info) {
     if (type != kCFSocketAcceptCallBack) return;
-    
     CFSocketNativeHandle handle = *(CFSocketNativeHandle *)data;
-    char buffer[1024*500] = {0}; //TODO how big/small should this be?
-    
-    ssize_t receivedBytes = recv(handle, buffer, sizeof(buffer) - 1, 0);
-    if (receivedBytes < 1) {
-        NSLog(@"Failed to receive data.");
-        close(handle);
-        return;
-    }
-
-    buffer[receivedBytes] = '\0';
-    CFDataRef dataRef = CFDataCreate(NULL, (UInt8 *)buffer, (CFIndex)receivedBytes);
+    char buffer[1024 * 500] = {0};
+    struct timeval timeout;
+    timeout.tv_sec = 1;
+    timeout.tv_usec = 0; //todo
+    setsockopt(handle, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
+    ssize_t bytes = recv(handle, buffer, sizeof(buffer) - 1, 0);
+    buffer[bytes] = '\0';
+    CFDataRef dataRef = CFDataCreate(NULL, (UInt8 *)buffer, (CFIndex)bytes);
     CFHTTPMessageRef httpRequest = CFHTTPMessageCreateEmpty(NULL, TRUE);
     CFHTTPMessageAppendBytes(httpRequest, CFDataGetBytePtr(dataRef), CFDataGetLength(dataRef));
+    NSString *requestPath = [(__bridge_transfer NSURL *)CFHTTPMessageCopyRequestURL(httpRequest) path];
+
+    if ([requestPath hasPrefix:@"/bytes"]) {
+        NSString *name = [requestPath lastPathComponent];
+        NSInteger size = [requestPath.pathComponents[requestPath.pathComponents.count - 2] integerValue];
+        CFMutableDataRef fileData = CFDataCreateMutable(NULL, 0);
+        while (bytes > 0 || CFDataGetLength(fileData) < size) {
+            CFDataAppendBytes(fileData, (UInt8 *)buffer, bytes);
+            bytes = recv(handle, buffer, sizeof(buffer) - 1, 0);
+        }
+        [objects setObject:[device newBufferWithLength:size options:MTLResourceStorageModeShared] forKey:name];
+        CFDataReplaceBytes(fileData, CFRangeMake(0, CFDataGetLength(fileData) - size), NULL, 0);
+        memcpy(((id<MTLBuffer>)objects[name]).contents, CFDataGetBytePtr(fileData), CFDataGetLength(fileData));
+        char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nreceived";
+        send(handle, response, strlen(response), 0);
+        close(handle);
+        CFRelease(fileData);
+        return;
+    }
     
     if (CFHTTPMessageIsHeaderComplete(httpRequest)) {
         //NSData *bodyData = (__bridge_transfer NSData *)CFHTTPMessageCopyBody(httpRequest);
@@ -182,7 +207,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 }
             } else if([queue[i][0] isEqualToString:@"delete"]) {
                 [objects removeAllObjects];
-                [objects setObject: device forKey:@"d"]; //NEED TO KEEP DEVICE
+                [objects setObject: device forKey:@"d"]; //need to keep device
             } else if([queue[i][1] isEqualToString:@"executeCommandsInBuffer:withRange:"]) {
                 [objects[queue[i][0]] executeCommandsInBuffer:objects[queue[i][3]] withRange:NSMakeRange(0,[queue[i][4] intValue])];
             } else if([queue[i][0] isEqualToString:@"copyin"]) {
@@ -304,9 +329,5 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
 }
 
 @end
-
-
-
-
 
 

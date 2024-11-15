@@ -141,7 +141,9 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         NSInteger size = [requestPath.pathComponents[requestPath.pathComponents.count - 2] integerValue];
         CFMutableDataRef fileData = CFDataCreateMutable(NULL, 0);
         while (bytes > 0 || CFDataGetLength(fileData) < size) {
-            CFDataAppendBytes(fileData, (UInt8 *)buffer, bytes);
+            if(bytes > 0) {
+                CFDataAppendBytes(fileData, (UInt8 *)buffer, bytes);
+            }
             bytes = recv(handle, buffer, sizeof(buffer) - 1, 0);
         }
         [objects setObject:[device newBufferWithLength:size options:MTLResourceStorageModeShared] forKey:name];

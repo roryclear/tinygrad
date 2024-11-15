@@ -65,9 +65,6 @@ class IOSAllocator(LRUAllocator):
   def _alloc(self, size:int, options) -> IOSBuffer:
     buf = self.device.msg(self.device.device,"newBufferWithLength:options:",size,0,res=new_var())
     return IOSBuffer(buf, size)
-  def _free(self, opaque:IOSBuffer, options): return #todo?
-  def transfer(self, dest:IOSBuffer, src:IOSBuffer, sz:int, src_dev:IOSDevice, dest_dev:IOSDevice): exit() #TODO
-  def from_buffer(self, src:memoryview) -> Optional[Any]: exit() #TODO
   def as_buffer(self, src:IOSBuffer) -> memoryview:
     for cbuf in self.device.mtl_buffers_in_flight: self.device.msg(cbuf,"waitUntilCompleted")
     self.device.mtl_buffers_in_flight.clear()
@@ -93,7 +90,6 @@ class IOSAllocator(LRUAllocator):
     self.device.msg("copyin",formatted_hex,dest.buf)
 
   def copyout(self, dest:memoryview, src:IOSBuffer): 
-    exit() #TODO
     dest[:] = self.as_buffer(src)
   def offset(self, buf:IOSBuffer, size:int, offset:int):
     return IOSBuffer(buf.buf, size, offset)
@@ -182,10 +178,10 @@ class IOSGraph(GraphRunner):
 class IOSDevice(Compiled):
   def __init__(self, device:str):
     self.device = "d"
+    self.ip = "http://192.168.1.6:8081" #iphone ip address
     self.queue = []
     self.files = set()
-    self.msg("delete_files","0") #delete weights after copying to metal buffer
-    self.msg("delete","x")
+    #self.msg("delete","x")
     self.mtl_queue = self.msg(self.device,"newCommandQueueWithMaxCommandBufferCount:",1024,res=new_var())
     self.mtl_buffers_in_flight: List[Any] = []
 
@@ -205,7 +201,7 @@ class IOSDevice(Compiled):
 
   def send_bytes(self,dest,data,size):
     self.send_queue()
-    url = "http://192.168.1.113:8081/bytes/" + str(size) + "/" + dest
+    url = self.ip + "/bytes/" + str(size) + "/" + dest
     status = 400
     while status != 200:
       try:
@@ -222,7 +218,6 @@ class IOSDevice(Compiled):
     return
 
   def send_queue(self):
-    url = "http://192.168.1.113:8081" #your iOS device's local IP
     payload = json.dumps(self.queue)
     self.queue = []
     compressed_payload = gzip.compress(payload.encode('utf-8'))
@@ -230,7 +225,7 @@ class IOSDevice(Compiled):
     while status != 200:
       try:
         headers = {'Content-Encoding': 'gzip', 'Content-Type': 'application/json'}
-        response = requests.post(url, compressed_payload,headers=headers,timeout=3600)
+        response = requests.post(self.ip, compressed_payload,headers=headers,timeout=3600)
         if response.status_code == 200:
             status = 200
             if len(response.text) > 0:

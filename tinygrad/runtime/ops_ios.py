@@ -184,6 +184,7 @@ class IOSDevice(Compiled):
     self.device = "d"
     self.queue = []
     self.files = set()
+    self.msg("delete_files","0") #delete weights after copying to metal buffer
     self.msg("delete","x")
     self.mtl_queue = self.msg(self.device,"newCommandQueueWithMaxCommandBufferCount:",1024,res=new_var())
     self.mtl_buffers_in_flight: List[Any] = []

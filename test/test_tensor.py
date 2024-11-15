@@ -7,7 +7,7 @@ from tinygrad.engine.schedule import create_schedule
 from tinygrad.helpers import getenv, temp, CI, _METADATA, mv_address
 from extra.gradcheck import numerical_jacobian, jacobian, gradcheck
 from hypothesis import given, settings, strategies as strat
-from test.helpers import is_dtype_supported
+from tinygrad.device import is_dtype_supported
 
 settings.register_profile("my_profile", max_examples=200, deadline=None, derandomize=getenv("DERANDOMIZE_CI", False))
 settings.load_profile("my_profile")
@@ -257,6 +257,11 @@ class TestTinygrad(unittest.TestCase):
     b = Tensor.ones_like(a, dtype=dtypes.int8)
     assert a.dtype == dtypes.default_int and b.dtype == dtypes.int8, "a.dtype should be int and b.dtype should be char"
     assert a.shape == b.shape, f"shape mismatch {a.shape} != {b.shape}"
+
+  def test_rand_like_device(self):
+    a = Tensor.ones(3, 3, device="CLANG")
+    b = Tensor.rand_like(a)
+    self.assertEqual(b.device, a.device)
 
   def test_ndim(self):
     assert Tensor(1).ndim == 0

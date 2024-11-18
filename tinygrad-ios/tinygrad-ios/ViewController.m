@@ -100,27 +100,6 @@ char *charArrayFromFloat(float value) {
     NSLog(@"HTTP Server started on port 8081.");
 }
 
-void printBufferBytes(id<MTLBuffer> buffer) {
-    unsigned char *bytes = (unsigned char *)[buffer contents];
-    NSUInteger length = [buffer length];
-    NSMutableString *byteString = [NSMutableString stringWithCapacity:length * 3];
-    for (NSUInteger i = 0; i < length; i++) {
-        [byteString appendFormat:@"%02x ", bytes[i]];
-    }
-    NSLog(@"Buffer bytes: %@", byteString);
-}
-
-void printHexBytes(CFMutableDataRef data) {
-    const UInt8 *bytes = CFDataGetBytePtr(data);
-    CFIndex length = CFDataGetLength(data);
-    NSMutableString *hexString = [NSMutableString stringWithCapacity:length * 2];
-    for (CFIndex i = 0; i < length; i++) {
-        [hexString appendFormat:@"%02x", bytes[i]];
-    }
-    NSLog(@"Hex bytes: %@", hexString);
-}
-
-
 static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFDataRef address, const void *data, void *info) {
     if (type != kCFSocketAcceptCallBack) return;
     CFSocketNativeHandle handle = *(CFSocketNativeHandle *)data;
@@ -171,9 +150,10 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         }
 
         NSError *error = nil;
-        NSArray *req_queue = [NSJSONSerialization JSONObjectWithData:bodyData options:0 error:&error];
+        NSArray *req_queue = (bodyData) ? [NSJSONSerialization JSONObjectWithData:bodyData options:0 error:&error] : nil;
         
-        if (!req_queue || error) {
+        if (!bodyData || !req_queue || error) {
+            NSLog(@"Error: Missing or malformed body or JSON parsing failed.");
             const char *response = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\n\r\nInvalid request: Missing or malformed body.";
             send(handle, response, strlen(response), 0);
             close(handle);

@@ -136,19 +136,8 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
     }
     
     if (CFHTTPMessageIsHeaderComplete(httpRequest)) {
-        //NSData *bodyData = (__bridge_transfer NSData *)CFHTTPMessageCopyBody(httpRequest);
         NSData *bodyDataUnc = (__bridge_transfer NSData *)CFHTTPMessageCopyBody(httpRequest);
         NSData *bodyData = [bodyDataUnc gunzippedData];
-        
-        if (!bodyData) {
-            const char *response = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\n\r\nInvalid request: Missing or malformed body.";
-            send(handle, response, strlen(response), 0);
-            close(handle);
-            CFRelease(httpRequest);
-            CFRelease(dataRef);
-            return;
-        }
-
         NSError *error = nil;
         NSArray *req_queue = (bodyData) ? [NSJSONSerialization JSONObjectWithData:bodyData options:0 error:&error] : nil;
         

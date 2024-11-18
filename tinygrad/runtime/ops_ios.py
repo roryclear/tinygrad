@@ -173,12 +173,11 @@ class IOSGraph(GraphRunner):
       for cbuf in self.device.mtl_buffers_in_flight: self.device.msg(cbuf,"waitUntilCompleted")
       self.device.mtl_buffers_in_flight.clear()
       return float(self.device.msg(command_buffer,"elapsed_time"))
-    return None
 
 class IOSDevice(Compiled):
   def __init__(self, device:str):
     self.device = "d"
-    self.ip = "http://192.168.1.6:8081" #iphone ip address
+    self.ip = "http://192.168.1.113:8081" #iphone ip address
     self.queue = []
     self.files = set()
     #self.msg("delete","x")
@@ -202,37 +201,31 @@ class IOSDevice(Compiled):
   def send_bytes(self,dest,data,size):
     self.send_queue()
     url = self.ip + "/bytes/" + str(size) + "/" + dest
-    status = 400
-    while status != 200:
-      try:
-        headers = {}
-        response = requests.post(url, data=data,headers=headers,timeout=3600)
-        if response.status_code == 200:
-            status = 200
-            if len(response.text) > 0:
-              return response.text
-        else:
-            time.sleep(0.1)
-      except requests.exceptions.RequestException as e:
-        time.sleep(0.2)
+    return self.send_req(url,data)
 
   def send_queue(self):
     payload = json.dumps(self.queue)
     self.queue = []
     compressed_payload = gzip.compress(payload.encode('utf-8'))
-    status = 400
-    while status != 200:
+    return self.send_req(self.ip,compressed_payload)
+
+  def send_req(self,ip,data):
+    retries = 0
+    while retries < 20:
       try:
-        headers = {'Content-Encoding': 'gzip', 'Content-Type': 'application/json'}
-        response = requests.post(self.ip, compressed_payload,headers=headers,timeout=3600)
+        headers = {}
+        response = requests.post(ip, data=data,headers=headers,timeout=3600)
         if response.status_code == 200:
-            status = 200
             if len(response.text) > 0:
               return response.text
+            return
         else:
             time.sleep(0.1)
-      except requests.exceptions.RequestException as e:
-        time.sleep(0.2)
-    return
+            retries +=1
+      except requests.exceptions.RequestException:
+        time.sleep(0.1)
+        retries += 1
+    raise Exception("Maximum retries reached.")
+      
 
 

@@ -215,7 +215,6 @@ class IOSDevice(Compiled):
             time.sleep(0.1)
       except requests.exceptions.RequestException as e:
         time.sleep(0.2)
-    return
 
   def send_queue(self):
     payload = json.dumps(self.queue)

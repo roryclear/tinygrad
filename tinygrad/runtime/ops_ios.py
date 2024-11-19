@@ -9,6 +9,8 @@ from tinygrad.helpers import dedup, prod
 from tinygrad.engine.realize import ExecItem, CompiledRunner
 from tinygrad.engine.jit import GraphRunner, GraphException
 from tinygrad.ops import Variable
+import argparse
+import sys
 
 var_num = -1
 def new_var():
@@ -170,7 +172,10 @@ class IOSGraph(GraphRunner):
 class IOSDevice(Compiled):
   def __init__(self, device:str):
     self.device = "d"
-    self.ip = "http://192.168.1.113:8081" #iphone ip address
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--IP',required=True,help='IP address of the iOS device used.')
+    args = parser.parse_args(sys.argv[1:])
+    self.ip = "http://" + args.IP + ":8081"
     self.queue = []
     self.files = set()
     self.msg("delete","x")

@@ -72,15 +72,8 @@ class IOSAllocator(LRUAllocator):
     byte_values = bytearray(int(b, 16) for b in byte_str.split())
     return memoryview(byte_values[:src.size]) 
   
-  def copy_from_disk(self,dest,src):
-    file_name = src.device[src.device.rfind("/")+1:]
-    if file_name in self.device.files:
-      self.device.msg("memcpy",str(dest._buf.buf),file_name,src.offset,src.nbytes)
-    elif self.device.msg(file_name,"file_exists"):
-      self.device.files.add(file_name)
-      self.device.msg("memcpy",str(dest._buf.buf),file_name,src.offset,src.nbytes)
-    else:
-      self.device.send_bytes(str(dest._buf.buf),src._buf._buf().tobytes(),src.nbytes)
+  def copy_from_disk(self,dest,src,nbytes):
+    self.device.send_bytes(str(dest.buf),src._buf().tobytes(),nbytes)
   
   def copyin(self, dest:IOSBuffer, src:memoryview):
     for cbuf in self.device.mtl_buffers_in_flight: self.device.msg(cbuf,"waitUntilCompleted")

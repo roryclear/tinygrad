@@ -149,8 +149,8 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         }
         NSData *bodyData = [bodyDataUnc gunzippedData];
         NSError *error = nil;
-        NSArray *req_queue = (bodyData) ? [NSJSONSerialization JSONObjectWithData:bodyData options:0 error:&error] : nil;
-        if (!bodyData || !req_queue || error) {
+        NSMutableArray *queue = (bodyData) ? [NSJSONSerialization JSONObjectWithData:bodyData options:0 error:&error] : nil;
+        if (!bodyData || !queue || error) {
             NSLog(@"Error: Missing or malformed body or JSON parsing failed.");
             const char *response = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\n\r\nInvalid request: Missing or malformed body.";
             send(handle, response, strlen(response), 0);
@@ -160,7 +160,6 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             return;
         }
         
-        [queue addObjectsFromArray:req_queue];
         for(int i = 0; i < [queue count]; i++) {
             if([queue[i][1] isEqualToString:@"dispatchThreadgroups:threadsPerThreadgroup:"]){
                 [objects[queue[i][0]] dispatchThreadgroups: MTLSizeMake([queue[i][3] intValue], [queue[i][4] intValue], [queue[i][5] intValue]) threadsPerThreadgroup: MTLSizeMake([queue[i][6] intValue], [queue[i][7] intValue], [queue[i][8] intValue]) ];
@@ -182,7 +181,6 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                     char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nfile found";
                     send(handle, response, strlen(response), 0);
                     close(handle);
-                    [queue removeAllObjects];
                     return;
                 }
             } else if([queue[i][0] isEqualToString:@"delete"]) {
@@ -210,7 +208,6 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 strcat(fullResponse, bytes);
                 send(handle, fullResponse, strlen(fullResponse), 0);
                 close(handle);
-                [queue removeAllObjects];
                 return;
             } else if([queue[i][1] isEqualToString:@"maxTotalThreadsPerThreadgroup"]) {
                 NSInteger max_size = [objects[queue[i][0]] maxTotalThreadsPerThreadgroup];
@@ -222,7 +219,6 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 strcat(fullResponse, res);
                 send(handle, fullResponse, strlen(fullResponse), 0);
                 close(handle);
-                [queue removeAllObjects];
                 return;
             } else if([queue[i][1] isEqualToString:@"elapsed_time"]){
                 float result = (float)([objects[queue[i][0]] GPUEndTime] - [objects[queue[i][0]] GPUStartTime]);
@@ -234,7 +230,6 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 strcat(fullResponse, res);
                 send(handle, fullResponse, strlen(fullResponse), 0);
                 close(handle);
-                [queue removeAllObjects];
                 return;
             } else if([queue[i][0] isEqualToString:@"memcpy"]) {
                 if ([objects objectForKey:queue[i][3]] == nil) {
@@ -301,7 +296,6 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 }
             }
         }
-        [queue removeAllObjects];
         const char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
         send(handle, response, strlen(response), 0);
         close(handle);

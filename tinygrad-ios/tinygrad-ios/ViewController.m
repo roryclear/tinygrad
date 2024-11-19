@@ -134,13 +134,22 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         CFRelease(fileData);
         return;
     }
-    
     if (CFHTTPMessageIsHeaderComplete(httpRequest)) {
         NSData *bodyDataUnc = (__bridge_transfer NSData *)CFHTTPMessageCopyBody(httpRequest);
+        NSInteger size = [requestPath.lastPathComponent integerValue];
+        if (bodyDataUnc.length > 0 && bodyDataUnc.length < size) {
+            NSMutableData *completeData = [bodyDataUnc mutableCopy];
+            while (completeData.length < size) {
+                char buffer[1024];
+                ssize_t bytes = recv(handle, buffer, sizeof(buffer), 0);
+                if (bytes <= 0) break;
+                [completeData appendBytes:buffer length:bytes];
+            }
+            bodyDataUnc = [completeData copy];
+        }
         NSData *bodyData = [bodyDataUnc gunzippedData];
         NSError *error = nil;
         NSArray *req_queue = (bodyData) ? [NSJSONSerialization JSONObjectWithData:bodyData options:0 error:&error] : nil;
-        
         if (!bodyData || !req_queue || error) {
             NSLog(@"Error: Missing or malformed body or JSON parsing failed.");
             const char *response = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\n\r\nInvalid request: Missing or malformed body.";

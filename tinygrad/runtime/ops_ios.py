@@ -180,7 +180,7 @@ class IOSDevice(Compiled):
     self.ip = "http://192.168.1.113:8081" #iphone ip address
     self.queue = []
     self.files = set()
-    #self.msg("delete","x")
+    self.msg("delete","x")
     self.mtl_queue = self.msg(self.device,"newCommandQueueWithMaxCommandBufferCount:",1024,res=new_var())
     self.mtl_buffers_in_flight: List[Any] = []
 
@@ -194,7 +194,7 @@ class IOSDevice(Compiled):
     for x in args: req.append(x)
     if res != None: req.append(res)
     self.queue.append(req)
-    if selector in ["copyout","maxTotalThreadsPerThreadgroup","elapsed_time","file_exists"] or len(self.queue) > 1000: #todo, don't send bytes as a string etc
+    if selector in ["copyout","maxTotalThreadsPerThreadgroup","elapsed_time","file_exists"]:
       return self.send_queue() or res
     return res
 
@@ -205,9 +205,11 @@ class IOSDevice(Compiled):
 
   def send_queue(self):
     payload = json.dumps(self.queue)
-    self.queue = []
     compressed_payload = gzip.compress(payload.encode('utf-8'))
-    return self.send_req(self.ip,compressed_payload)
+    size = len(compressed_payload)
+    url = self.ip + "/" + str(size)
+    self.queue = []
+    return self.send_req(url,compressed_payload)
 
   def send_req(self,ip,data):
     retries = 0

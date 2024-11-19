@@ -106,7 +106,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
     char buffer[1024 * 500] = {0};
     struct timeval timeout;
     timeout.tv_sec = 1;
-    timeout.tv_usec = 0; //todo
+    timeout.tv_usec = 0;
     setsockopt(handle, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
     ssize_t bytes = recv(handle, buffer, sizeof(buffer) - 1, 0);
     buffer[bytes] = '\0';
@@ -162,7 +162,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         
         [queue addObjectsFromArray:req_queue];
         for(int i = 0; i < [queue count]; i++) {
-            if([queue[i][1] isEqualToString:@"dispatchThreadgroups:threadsPerThreadgroup:"]){ //TODO, don't know how to not hardcode yet, copies twice atm too
+            if([queue[i][1] isEqualToString:@"dispatchThreadgroups:threadsPerThreadgroup:"]){
                 [objects[queue[i][0]] dispatchThreadgroups: MTLSizeMake([queue[i][3] intValue], [queue[i][4] intValue], [queue[i][5] intValue]) threadsPerThreadgroup: MTLSizeMake([queue[i][6] intValue], [queue[i][7] intValue], [queue[i][8] intValue]) ];
             } else if([queue[i][1] isEqualToString:@"concurrentDispatchThreadgroups:threadsPerThreadgroup:"]){
                 [objects[queue[i][0]] concurrentDispatchThreadgroups: MTLSizeMake([queue[i][3] intValue], [queue[i][4] intValue], [queue[i][5] intValue]) threadsPerThreadgroup: MTLSizeMake([queue[i][6] intValue], [queue[i][7] intValue], [queue[i][8] intValue]) ];
@@ -289,7 +289,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                             uint8_t *byteArgument = convertNSStringToBytes(queue[i][3]);
                             [invocation setArgument:&byteArgument atIndex:j-1];
                         } else {
-                            [invocation setArgument:&(NSString *){queue[i][j]} atIndex:j-1]; //IF NOT IN OBJECTS
+                            [invocation setArgument:&(NSString *){queue[i][j]} atIndex:j-1];
                         }
                     }
                 }

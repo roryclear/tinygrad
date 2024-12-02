@@ -110,8 +110,8 @@ class IOSGraph(GraphRunner):
     for j,ji in enumerate(self.jit_cache):
       prg: CompiledRunner = cast(CompiledRunner, ji.prg)
       icb_command = self.dev.msg(self.icb,"indirectComputeCommandAtIndex:",j,res=new_var())
-      all_pipelines.append(prg.clprg.pipeline_state)
-      self.dev.msg(icb_command, "setComputePipelineState:", prg.clprg.pipeline_state)
+      all_pipelines.append(prg._prg.pipeline_state)
+      self.dev.msg(icb_command, "setComputePipelineState:", prg._prg.pipeline_state)
       for i,b in enumerate(ji.bufs):
         if b is not None and b not in input_rawbuffers:
           self.dev.msg(icb_command,"setKernelBuffer:offset:atIndex:",b._buf.buf,b._buf.offset,i)

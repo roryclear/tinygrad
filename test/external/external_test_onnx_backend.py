@@ -40,10 +40,11 @@ class TinygradBackend(Backend):
 
 backend_test = onnx.backend.test.BackendTest(TinygradBackend, __name__)
 
-# TODO figure out why it's returning wrong values, geohotstan's uneducated guess is it's due to imprecision from float64 (double) -> float32
-# see Type Constraints: https://onnx.ai/onnx/operators/onnx_aionnxpreviewtraining_Adam.html#type-constraints
+# TODO: there isn't an AttributeProto for `epsilon` in the NodeProto for 'test_adam_multiple_cpu'
+# [x.name for x in n.attribute] -> ['alpha', 'beta', 'norm_coefficient']
+# but in their documentation https://github.com/onnx/onnx/blob/main/docs/Operators.md#examples-176, it states there being an epsilon of 1e-2
+# test passes with epsilon = 1e-2
 backend_test.exclude('test_adam_multiple_cpu')
-backend_test.exclude('test_nesterov_momentum_cpu')
 
 # about different dtypes
 if not is_dtype_supported(dtypes.float64):
@@ -69,10 +70,15 @@ backend_test.exclude('BFLOAT16')  # not supported in numpy
 # TODO: fix these with true onnx float16
 backend_test.exclude('to_FLOAT16')
 backend_test.exclude('cast_no_saturate')
+backend_test.exclude('test_dequantizelinear_e4m3fn_float16_cpu')
+backend_test.exclude('test_max_float16_cpu')
+backend_test.exclude('test_min_float16_cpu')
 
-backend_test.exclude('test_pow_types_int*')
 backend_test.exclude('test_convinteger_*')
 backend_test.exclude('test_matmulinteger_*')
+
+backend_test.exclude('test_dequantizelinear_int4_cpu')
+backend_test.exclude('test_dequantizelinear_uint4_cpu')
 
 # we don't support indexes
 backend_test.exclude('test_nonzero_*')
@@ -116,7 +122,6 @@ backend_test.exclude('test_affine_grid_3d_expanded_cpu')
 backend_test.exclude('test_range_int32_type_negative_delta_expanded_cpu')
 
 # unsupported (strange) ops
-backend_test.exclude('test_bitwise_*')
 backend_test.exclude('test_blackmanwindow_*')
 backend_test.exclude('test_bernoulli_*')
 backend_test.exclude('test_det_*')

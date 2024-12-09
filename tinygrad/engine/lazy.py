@@ -3,7 +3,7 @@ from typing import Optional, Any, Tuple, List, get_args
 from tinygrad.dtype import dtypes, DType, ConstType, to_dtype, ImageDType
 from tinygrad.helpers import prod, getenv, all_int, all_same, DEBUG, _METADATA, Metadata, SPLIT_REDUCEOP, LAZYCACHE
 from tinygrad.ops import exec_alu, python_alu
-from tinygrad.ops import identity_element, MathTrait, resolve, UOp, sint, GroupOp, Ops
+from tinygrad.ops import MathTrait, resolve, UOp, sint, GroupOp, Ops, view_supported_devices
 from tinygrad.shape.shapetracker import ShapeTracker
 from tinygrad.device import Buffer
 from weakref import ref, ReferenceType, WeakValueDictionary
@@ -21,7 +21,6 @@ def create_lazybuffer(device:str, st:ShapeTracker, dtype:DType, op:Optional[Ops]
   if enable_cache: lazycache[cache_key] = ret
   return ret
 
-view_supported_devices = {"LLVM", "CLANG", "CUDA", "NV", "AMD", "METAL", "QCOM", "DSP", "DISK"}
 class LazyBuffer(MathTrait):
   def __init__(self, device:str, st:ShapeTracker, dtype:DType,
                op:Optional[Ops]=None, arg:Any=None, srcs:Tuple[LazyBuffer, ...]=(),
@@ -32,13 +31,13 @@ class LazyBuffer(MathTrait):
       # properties on base
       self.op, self.arg, self.srcs = op, arg, srcs  # this is a UOp, except the src is LazyBuffers and not UOps
       assert self.op is not Ops.ASSIGN or srcs[0].base.realized is not None, "assign target must be realized"
+      assert all_same([x.st.shape for x in self.srcs]), f"src shape mismatch! {self.srcs}"
 
       if self.op is Ops.BUFFER_VIEW:
         # some LazyBuffers can be processed with only a view, no AST required
         self.buffer: Buffer = srcs[0].base.buffer.view(st.size, self.dtype, srcs[0].st.views[0].offset * srcs[0].dtype.itemsize)
       else:
         self.buffer = srcs[0].base.buffer if self.op is Ops.ASSIGN else Buffer(device, self.size, self.dtype)
-      self.buffer.ref(1)
       self.contiguous_child: Optional[Tuple[ReferenceType[LazyBuffer], ShapeTracker]] = None
       self.forced_realize = False
     else:
@@ -82,7 +81,7 @@ class LazyBuffer(MathTrait):
     assert x.size == self.size, f"assign target must have same size {self.size=} != {x.size=}"
     assert self.is_realized, f"assign target must be realized {self}"
     return LazyBuffer.metaop(Ops.ASSIGN, self.shape, self.dtype, self.device, arg=None if self.st.contiguous else self.st,
-                             src=(self.base, x), enable_cache=True)
+                             src=(self, x), enable_cache=True) # NOTE: assign to VIEW is fine
 
   def can_view(self):
     return (self.st.consecutive and not self.is_unrealized_const() and not isinstance(self.dtype, ImageDType) and
@@ -181,15 +180,6 @@ class LazyBuffer(MathTrait):
 
   def r(self, op:Ops, axis:Tuple[int, ...]) -> LazyBuffer:
     new_shape = self.st.reduce(axis)
-    # TODO: this logic should move to the scheduler
-    if 0 in self.shape and 0 not in new_shape: return self.const_with_shape(identity_element(op, self.dtype), new_shape)
-
-    # const folding
-    # TODO: fold this for symbolic?
-    if self.is_unrealized_unmasked_const() and all_int(self.shape):
-      if op is Ops.ADD: return self.const_with_shape(self.base.arg * prod(self.shape[i] for i in axis), new_shape)
-      if op is Ops.MUL: return self.const_with_shape(self.base.arg ** prod(self.shape[i] for i in axis), new_shape)
-      if op is Ops.MAX: return self.const_with_shape(self.base.arg, new_shape)
 
     # TODO: can we split symbolic shape if the reduce axis is not symbolic?
     if not SPLIT_REDUCEOP or not all_int(self.shape) or (0 in self.shape) or \

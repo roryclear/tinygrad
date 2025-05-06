@@ -242,7 +242,7 @@ MAP_JIT = 0x0800
 # CPUProgram is a jit/shellcode program that can be just mmapped and jumped to
 # change to compiler-rt.so: https://github.com/tinygrad/tinygrad/issues/9687 ?
 class CPUProgram:
-  rt_lib = ctypes.CDLL(ctypes.util.find_library('System' if OSX else 'kernel32') if OSX or sys.platform == "win32" else 'compiler-rt')
+  rt_lib = ctypes.CDLL(ctypes.util.find_library('System' if OSX else 'kernel32') if OSX or sys.platform == "win32" else 'libcompiler_rt.so')
   atomic_lib = ctypes.CDLL(ctypes.util.find_library('atomic')) if sys.platform == "linux" else None
 
   def __init__(self, name:str, lib:bytes):

@@ -139,12 +139,14 @@ class CStyleLanguage(Renderer):
       #local sizes
       local_size = [1,1,1]
       global_vars = []
+      bind_num = 0
       for o in uops: 
         if o.op is Ops.SPECIAL:
           if o.arg[0].startswith("lidx"):
             local_size[int(o.arg[0][4])] = int(o.arg[1])
         if o.op is Ops.DEFINE_GLOBAL:
-          line = f"layout(set = 0, binding = {o.arg}) buffer DataBuffer{o.arg} {{{self.render_dtype(o.dtype)} data{o.arg}[];}};"
+          line = f"layout(set = 0, binding = {bind_num}) buffer DataBuffer{o.arg} {{{self.render_dtype(o.dtype)} data{o.arg}[];}};"
+          bind_num+=1
           global_vars.append(line)
         if o.op is Ops.DEFINE_VAR:
           line = f"layout(constant_id = {o.arg[1]}) const int {o.arg[0]} = {o.arg[2]};"
@@ -196,13 +198,12 @@ class CStyleLanguage(Renderer):
     arg_num = 0 # todo hack because 1,3,5 buffers breaks it
     c: defaultdict[str, int] = defaultdict(int)
     name = "test"
-    print("rory uops =",uops)
     for u in uops:
       if u.op is Ops.SINK:
         if u.arg is not None: name = u.arg.name
         continue
       if u.op in (Ops.DEFINE_GLOBAL, Ops.DEFINE_VAR):
-        u.arg = arg_num
+        #u.arg = arg_num
         arg_num+=1
         r[u] = f"data{u.arg}" if u.op is Ops.DEFINE_GLOBAL else u.arg[0]
         bufs[u] = (r[u], (u.dtype, False))
@@ -224,7 +225,6 @@ class CStyleLanguage(Renderer):
         r[u] = f"{prefix}{c[prefix]}"
 
       l = cast(str, self.string_rewrite.rewrite(u, ctx=self))
-      print("rory l =",l,u.op)
       assert l is not None, f"failed to render {u.op} {u.dtype} {[(x.op,x.dtype) for x in u.src]} {u.arg}"
 
       if u.op in {Ops.ENDIF, Ops.ENDRANGE}: depth -= 1

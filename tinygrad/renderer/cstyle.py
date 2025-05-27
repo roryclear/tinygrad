@@ -7,6 +7,10 @@ from tinygrad.dtype import ImageDType, dtypes, DType, PtrDType
 from tinygrad.renderer import Renderer, TensorCore
 from tinygrad.codegen.devectorizer import no_vectorized_alu
 
+import subprocess
+import tempfile
+import re
+
 base_rewrite = PatternMatcher([
   (UPat(Ops.DEFINE_ACC, name="x"), lambda ctx,x: ctx[x.src[0]]),
   (UPat(Ops.ASSIGN, name="x"), lambda ctx,x: f"{ctx[x.src[0]]} = {ctx[x.src[1]]};"),
@@ -35,7 +39,7 @@ base_rewrite = PatternMatcher([
   (UPat(Ops.CONST, dtype=dtypes.int64, name="x"), lambda ctx,x: f"{x.arg}ll"),
   (UPat(Ops.CONST, dtype=dtypes.uint64, name="x"), lambda ctx,x: f"{x.arg}ull"),
   (UPat(Ops.CONST, dtype=dtypes.uint32, name="x"), lambda ctx,x: f"{x.arg}u"),
-  (UPat(Ops.CONST, dtype=dtypes.bool, name="x"), lambda ctx,x: "1" if x.arg else "0"),
+  (UPat(Ops.CONST, dtype=dtypes.bool, name="x"), lambda ctx,x: "true" if x.arg else "false"),
   # consts are rendered to larger type and casted
   (UPat(Ops.CONST, (dtypes.bfloat16, dtypes.half), name="x"), lambda ctx,x: f"({ctx.render_cast(x.dtype, f'{x.arg}f')})"),
   (UPat(Ops.CONST, (dtypes.uint8, dtypes.uint16), name="x"), lambda ctx,x: f"({ctx.render_cast(x.dtype, f'{x.arg}u')})"),
@@ -44,11 +48,11 @@ base_rewrite = PatternMatcher([
   (UPat(Ops.CONST, name="x"), lambda ctx,x: str(x.arg)),
   # new load/store
   (UPat(Ops.INDEX, src=(UPat.var("buf"), UPat.var('idx')), allow_any_len=True),
-   lambda ctx,buf,idx: f"({ctx[buf]}+{strip_parens(ctx[idx]) if idx.arg == Ops.ADD else ctx[idx]})"),
+   lambda ctx,buf,idx: f"({ctx[buf]}[clamp({ctx[idx]},0,{ctx[buf]}.length()-1)])"),
   (UPat(Ops.LOAD, src=(UPat(Ops.INDEX, src=(UPat(), UPat(), UPat.var("gate"))).or_casted("bidx"), UPat.var("var")), allow_any_len=True),
-   lambda ctx,bidx,var,gate: f"({ctx[gate]}?*{ctx[bidx]}:{ctx[var]})"),
-  (UPat(Ops.LOAD, src=(UPat.var('bidx'),), allow_any_len=True), lambda ctx,bidx: f"*{ctx[bidx]}"),
-  (UPat(Ops.STORE, src=(UPat.var('bidx'), UPat.var("var")), allow_any_len=True), lambda ctx,bidx,var: f"*{ctx[bidx]} = {ctx[var]};"),
+   lambda ctx,bidx,var,gate: f"({ctx[gate]}?{ctx[bidx]}:{ctx[var]})"),
+  (UPat(Ops.LOAD, src=(UPat.var('bidx'),), allow_any_len=True), lambda ctx,bidx: f"{ctx[bidx]}"),
+  (UPat(Ops.STORE, src=(UPat.var('bidx'), UPat.var("var")), allow_any_len=True), lambda ctx,bidx,var: f"{ctx[bidx]} = {ctx[var]};"),
   # alu/gep
   (UPat(GroupOp.ALU, name="x"), lambda ctx,x: ctx.code_for_op[x.op](
     *([strip_parens(ctx[v]) if v.op == x.op and x.op in {Ops.ADD, Ops.MUL, Ops.XOR} else ctx[v] for v in x.src]), x.dtype)),
@@ -74,6 +78,16 @@ extra_pm = PatternMatcher([
 
 def uops_to_dtypes(uops:list[UOp]) -> list[DType]: return dedup(u.dtype for u in uops if not isinstance(u.dtype, (ImageDType, PtrDType)))
 
+MAX_UINT32 = 2**32
+def metal_wrap_if_literal(s):
+    import re
+    match = re.fullmatch(r'(\d+)[uU]?', s)
+    if match:
+        value = int(match.group(1))
+        wrapped = value % MAX_UINT32
+        return str(wrapped)
+    return s  # not a literal, leave as-is
+
 class CStyleLanguage(Renderer):
   kernel_prefix: str = ""
   buffer_prefix: str = ""
@@ -89,15 +103,15 @@ class CStyleLanguage(Renderer):
   float4_style: tuple[str, str] = ('(', ')')
   gep_arr_threshold: int = 4
   type_map: dict[DType, str] = {}
-  infinity: str = "INFINITY"
-  nan: str = "NAN"
+  infinity: str = "1.0f / 0.0f"
+  nan: str = "0.0/0.0"
   code_for_op: dict = {
-    Ops.SQRT: lambda x,dtype: f"sqrt({x})", Ops.RECIP: lambda x,dtype: f"(1/{x})", Ops.NEG: lambda x,dtype: f"-{x}",
-    Ops.EXP2: lambda x,dtype: f"exp2({x})", Ops.LOG2: lambda x,dtype: f"log2({x})", Ops.SIN: lambda x,dtype: f"sin({x})",
-    Ops.AND: lambda a,b,dtype: f"({a}&{b})", Ops.XOR: lambda a,b,dtype: f"({a}^{b})", Ops.OR: lambda a,b,dtype: f"({a}|{b})",
-    Ops.ADD: lambda a,b,dtype: f"({a}+{b})", Ops.SUB: lambda a,b,dtype: f"({a}-{b})", Ops.MUL: lambda a,b,dtype: f"({a}*{b})",
-    Ops.MOD: lambda a,b,dtype: f"({a}%{b})", Ops.IDIV: lambda a,b,dtype: f"({a}/{b})", Ops.CMPNE: lambda a,b,dtype: f"({a}!={b})",
-    Ops.SHR: lambda a,b,dtype: f"({a}>>{b})", Ops.SHL: lambda a,b,dtype: f"({a}<<{b})", Ops.CMPLT: lambda a,b,dtype: f"({a}<{b})",
+    Ops.SQRT: lambda x,dtype: f"v_sqrt({x})", Ops.RECIP: lambda x,dtype: f"(1/{x})", Ops.NEG: lambda x,dtype: f"-{x}",
+    Ops.EXP2: lambda x,dtype: f"exp2({x})", Ops.LOG2: lambda x,dtype: f"v_log2({x})", Ops.SIN: lambda x,dtype: f"sin({x})",
+    Ops.AND: lambda a,b,dtype: f"({a}&{b})" if dtype in [dtypes.int, dtypes.uint] else f"({a}&&{b})", Ops.XOR: lambda a,b,dtype: f"({a}^{b})", Ops.OR: lambda a, b, dtype: f"({a}||{b})" if dtype == dtypes.bool else f"({a}|{b})",
+    Ops.ADD: lambda a, b, dtype: f"({a}+{metal_wrap_if_literal(b)})", Ops.SUB: lambda a,b,dtype: f"({a}-{b})", Ops.MUL: lambda a,b,dtype: f"({a}*{b})",
+    Ops.MOD: lambda a,b,dtype: f"({a}%{b})", Ops.IDIV: lambda a,b,dtype: f"({a}/{b})", Ops.CMPNE: lambda a,b,dtype: f"(float({a})!=float({b}))",
+    Ops.SHR: lambda a,b,dtype: f"({a}>>{b})", Ops.SHL: lambda a,b,dtype: f"({a}<<{b})", Ops.CMPLT: lambda a, b, dtype: f"(float({a})<float({b}))",
     Ops.WHERE: lambda a,b,c,dtype: f"({a}?{b}:{c})" }
 
   string_rewrite = base_rewrite
@@ -105,6 +119,55 @@ class CStyleLanguage(Renderer):
 
   def get_kernel_modifier(self, uops:list[UOp]) -> str: return ""
   def render_kernel(self, function_name:str, kernel:list[str], bufs:list[tuple[str,tuple[DType,bool]]], uops:list[UOp], prefix=None) -> str:
+    if self.device == "METAL" or 1==1:
+      custom_log2 = "float v_log2(float x) {\nif (x < 0.0f) { const uint nan_bits = 0x7FC00000u; return uintBitsToFloat(nan_bits); }\nreturn log2(x);\n}"
+      custom_sqrt = "float v_sqrt(float x) {\nif (x < 0.0f) { const uint nan_bits = 0x7FC00000u; return uintBitsToFloat(nan_bits); }\nreturn sqrt(x);\n}"
+      prg = "#version 450\n"+custom_sqrt+"\n"+custom_log2+"\nvoid main() {\n" + ''.join(['\n'.join(kernel), "\n}"])
+
+      #todo ....
+      lines = prg.splitlines()
+      shared_lines = [line for line in lines if line.strip().startswith("shared ")]
+      lines = [line for line in lines if not line.strip().startswith("shared ")]
+      for i, line in enumerate(lines):
+          if line.strip().startswith("void main()"):
+              insert_index = i
+              break
+      for shared_line in reversed(shared_lines):
+          lines.insert(insert_index, shared_line)
+      prg = "\n".join(lines)
+
+      #local sizes
+      local_size = [1,1,1]
+      global_vars = []
+      for o in uops: 
+        if o.op is Ops.SPECIAL:
+          if o.arg[0].startswith("lidx"):
+            local_size[int(o.arg[0][4])] = int(o.arg[1])
+        if o.op is Ops.DEFINE_GLOBAL:
+          line = f"layout(set = 0, binding = {o.arg}) buffer DataBuffer{o.arg} {{{self.render_dtype(o.dtype)} data{o.arg}[];}};"
+          global_vars.append(line)
+        if o.op is Ops.DEFINE_VAR:
+          line = f"layout(constant_id = {o.arg[1]}) const int {o.arg[0]} = {o.arg[2]};"
+          global_vars.append(line)
+
+      #todo mess that adds global vars
+      lines = prg.splitlines()
+      for i, line in enumerate(lines):
+          if line.strip() == "#version 450":
+              insert_index = i + 1
+              break
+      for gv in reversed(global_vars):
+          lines.insert(insert_index, gv)
+      prg = "\n".join(lines)
+
+      local_size_string = f"layout(local_size_x = {local_size[0]}, local_size_y = {local_size[1]}, local_size_z = {local_size[2]}) in;"
+      prg = '\n'.join([prg.splitlines()[0], local_size_string, *prg.splitlines()[1:]])
+      prg = prg.replace("#version 450", "#version 450\n#extension GL_EXT_shader_8bit_storage : require\n#extension GL_EXT_shader_explicit_arithmetic_types_int8 : require\n#extension GL_EXT_scalar_block_layout : require", 1)
+      #
+      #compile
+      prg = compile_shader_to_spv(prg)
+
+      return prg
     tmp = "const sampler_t smp = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP | CLK_FILTER_NEAREST;\n" if any(isinstance(dtype, ImageDType) for _,(dtype,_) in bufs) else ""  # noqa: E501
     buftypes = [(name, self.render_dtype(dtype, mutable)+self.buffer_suffix if isinstance(dtype, (ImageDType, PtrDType)) else
                 self.arg_int_prefix if dtype == dtypes.int else None) for name,(dtype,mutable) in bufs]
@@ -113,11 +176,11 @@ class CStyleLanguage(Renderer):
     [") {\n" + tmp] + ['\n'.join(kernel), "\n}"])
     return prg if prefix is None else "\n".join(prefix)+f"\n{prg}"
 
-  def render_cast(self, dt:DType, val: str) -> str: return f"({self.render_dtype(dt)})({val})"
+  def render_cast(self, dt:DType, val: str) -> str: return f"{self.render_dtype(dt)}({val})"
   def render_dtype(self, dt:DType, mutable=True) -> str:
     if isinstance(dt, ImageDType): return f"{'write_only' if mutable else 'read_only'} image2d_t"
     if isinstance(dt, PtrDType):
-      return (self.smem_prefix if dt.local and self.smem_prefix_for_cast else self.buffer_prefix) + self.render_dtype(dt.base) + "*"
+      return (self.smem_prefix if dt.local and self.smem_prefix_for_cast else self.buffer_prefix) + self.render_dtype(dt.base)#no star vulkan no pointers
     if dt.count > 1: return self.type_map.get(scalar:=dt.scalar(), scalar.name).replace(" ", "_") + str(dt.count)
     return self.type_map.get(scalar:=dt.scalar(), scalar.name)
 
@@ -130,13 +193,17 @@ class CStyleLanguage(Renderer):
     bufs: dict[UOp, tuple[str, tuple[DType, bool]]] = {}
     kernel = []
     depth = 1
+    arg_num = 0 # todo hack because 1,3,5 buffers breaks it
     c: defaultdict[str, int] = defaultdict(int)
     name = "test"
+    print("rory uops =",uops)
     for u in uops:
       if u.op is Ops.SINK:
         if u.arg is not None: name = u.arg.name
         continue
       if u.op in (Ops.DEFINE_GLOBAL, Ops.DEFINE_VAR):
+        u.arg = arg_num
+        arg_num+=1
         r[u] = f"data{u.arg}" if u.op is Ops.DEFINE_GLOBAL else u.arg[0]
         bufs[u] = (r[u], (u.dtype, False))
         continue
@@ -157,6 +224,7 @@ class CStyleLanguage(Renderer):
         r[u] = f"{prefix}{c[prefix]}"
 
       l = cast(str, self.string_rewrite.rewrite(u, ctx=self))
+      print("rory l =",l,u.op)
       assert l is not None, f"failed to render {u.op} {u.dtype} {[(x.op,x.dtype) for x in u.src]} {u.arg}"
 
       if u.op in {Ops.ENDIF, Ops.ENDRANGE}: depth -= 1
@@ -254,6 +322,30 @@ class OpenCLRenderer(CStyleLanguage):
       lambda ctx,buf,idx,var: f"write_imagef({ctx[buf]}, {ctx[idx]}, {ctx[var]});"),
   ]) + base_rewrite
 
+  string_rewrite = PatternMatcher([
+    (UPat(Ops.BITCAST, name="x"), lambda ctx,x: (
+        # Float from signed/unsigned int
+        f"intBitsToFloat(int({ctx[x.src[0]]}))" if x.dtype == dtypes.float and x.src[0].dtype == dtypes.uint else
+        f"intBitsToFloat({ctx[x.src[0]]})" if x.dtype == dtypes.float and x.src[0].dtype == dtypes.int else
+        f"uintBitsToFloat({ctx[x.src[0]]})" if x.dtype == dtypes.float and x.src[0].dtype == dtypes.uint else
+        
+        # Int/uint from float
+        f"floatBitsToInt({ctx[x.src[0]]})" if x.dtype == dtypes.int else
+        f"floatBitsToUint({ctx[x.src[0]]})" if x.dtype == dtypes.uint else
+        
+        # Double precision
+        f"doubleBitsToInt64({ctx[x.src[0]]})" if x.dtype == dtypes.double else
+        f"int64BitsToDouble({ctx[x.src[0]]})" if x.dtype == dtypes.long else
+        
+        # Pack/unpack variants
+        f"packHalf2x16({ctx[x.src[0]]})" if x.dtype == dtypes.uint and x.src[0].dtype == dtypes.float2 else
+        f"unpackHalf2x16({ctx[x.src[0]]})" if x.dtype == dtypes.float2 and x.src[0].dtype == dtypes.uint else
+        
+        # Fallback (should never hit if all cases covered)
+        f"as_type<{ctx.render_dtype(x.dtype)}>({ctx[x.src[0]]})"
+      )),
+  ]) + base_rewrite
+
   def render_kernel(self, function_name, kernel, bufs, uops, prefix=None) -> str:
     if any(uop.dtype.base == dtypes.half for uop in uops): prefix = (["#pragma OPENCL EXTENSION cl_khr_fp16 : enable"] + (prefix or []))
     return super().render_kernel(function_name, kernel, bufs, uops, prefix)
@@ -279,25 +371,25 @@ class IntelRenderer(OpenCLRenderer):
 class MetalRenderer(CStyleLanguage):
   device = "METAL"
   shared_max = 32768
-  tensor_cores = [TensorCore(dims=(8,8,8), threads=32, elements_per_thread=(2,2,2), dtype_in=di, dtype_out=do, opts=("u0","l0","l1","l1","l0","l1"),
-    swizzle=(((6,1,2,7,4),(8,0,3,5)), ((0,5,6,3,7),(1,2,4,8)))) for di,do in [(dtypes.float,dtypes.float),(dtypes.half,dtypes.float),
-    (dtypes.half,dtypes.half),(dtypes.bfloat16,dtypes.float),(dtypes.bfloat16,dtypes.bfloat16)]]
+  #tensor_cores = [TensorCore(dims=(8,8,8), threads=32, elements_per_thread=(2,2,2), dtype_in=di, dtype_out=do, opts=("u0","l0","l1","l1","l0","l1"),
+  #  swizzle=(((6,1,2,7,4),(8,0,3,5)), ((0,5,6,3,7),(1,2,4,8)))) for di,do in [(dtypes.float,dtypes.float),(dtypes.half,dtypes.float),
+  #  (dtypes.half,dtypes.half),(dtypes.bfloat16,dtypes.float),(dtypes.bfloat16,dtypes.bfloat16)]]
   def __init__(self): self.tensor_cores = MetalRenderer.tensor_cores if hasattr(os, 'uname') and os.uname().machine == "arm64" else []
 
   # language options
   kernel_prefix = "kernel "
-  buffer_prefix = "device "
-  smem_prefix = "threadgroup __attribute__((aligned(16))) "
+  buffer_prefix = ""
+  smem_prefix = "shared "
   arg_int_prefix = "constant int&"
-  barrier = "threadgroup_barrier(mem_flags::mem_threadgroup);"
-  float4 = "float4"
-  code_for_workitem = {"g": lambda x: f"gid.{chr(120+int(x))}", "l": lambda x: f"lid.{chr(120+int(x))}"}
+  barrier = "barrier();"
+  code_for_workitem = {"g": lambda x: f"int(gl_WorkGroupID.{chr(120+int(x))})", "l": lambda x: f"int(gl_LocalInvocationID.{chr(120+int(x))})"}
   # uint3 used for gid/lid - TODO: this should probably be `ushort3 lid [[thread_position_in_threadgroup]]`
   extra_args = ['uint3 gid [[threadgroup_position_in_grid]]', 'uint3 lid [[thread_position_in_threadgroup]]']
-  type_map = {dtypes.bfloat16: "bfloat"}
+  #type_map = {dtypes.bfloat16: "bfloat"}
+  type_map = {}
 
   # precise::sin
-  code_for_op = {**CStyleLanguage.code_for_op, Ops.SIN: lambda x,dtype: f"precise::sin({x})"}
+  #code_for_op = {**CStyleLanguage.code_for_op, Ops.SIN: lambda x,dtype: f"precise::sin({x})"}
 
   # upcast to float32 all the ops that don't support bfloat16
   extra_matcher = PatternMatcher([
@@ -312,6 +404,7 @@ class MetalRenderer(CStyleLanguage):
 
   def render_kernel(self, function_name, kernel, bufs, uops, prefix=None):
     prefix, wmma_args = ["#include <metal_stdlib>","using namespace metal;"], set([uop.arg for uop in uops if uop.op is Ops.WMMA])
+    wmma_args = set()
     for arg in wmma_args: prefix.append(
   f"""{(dtype_out:=self.render_dtype(arg[3].vec(2)))} __{arg[0]}({(dtype_in:=self.render_dtype(arg[2].vec(2)))} a, {dtype_in} b, {dtype_out} c){{
   simdgroup_{self.render_dtype(arg[2])}8x8 mat_a, mat_b; simdgroup_{self.render_dtype(arg[3])}8x8 mat_c;
@@ -509,3 +602,48 @@ class AMDRenderer(CStyleLanguage):
 class NVRenderer(CUDARenderer): device = "NV"
 class HIPRenderer(AMDRenderer): device = "HIP"
 class QCOMRenderer(OpenCLRenderer): device = "QCOM"
+
+
+def compile_shader_to_spv(glsl_source: str) -> bytes:
+    print(glsl_source)
+    with tempfile.NamedTemporaryFile(suffix=".comp", delete=False, mode="w") as temp_file:
+        temp_file.write(glsl_source)
+        temp_file_path = temp_file.name
+
+    output_spv_path = tempfile.NamedTemporaryFile(suffix=".spv", delete=False).name
+
+    try:
+        result = subprocess.run(
+            ["glslangValidator", "-V", temp_file_path, "-o", output_spv_path],
+            check=True,
+            capture_output=True,
+            text=True
+        )
+
+        if result.stderr:
+            print("Compiler warnings:")
+            print(result.stderr)
+
+        with open(output_spv_path, "rb") as f:
+            return f.read()
+
+    except subprocess.CalledProcessError as e:
+        print("Error compiling shader:")
+        print("Exit code:", e.returncode)
+        print("Error output:")
+        print(e.stderr)
+        print("Standard output:")
+        print(e.stdout)
+        raise
+    except FileNotFoundError:
+        print("Error: glslangValidator not found. Please ensure it is installed and in your PATH.")
+        raise
+    finally:
+        try:
+            os.unlink(temp_file_path)
+        except OSError as e:
+            print(f"Warning: Could not delete temporary file {temp_file_path}: {e}")
+        try:
+            os.unlink(output_spv_path)
+        except OSError as e:
+            print(f"Warning: Could not delete temporary file {output_spv_path}: {e}")

@@ -247,9 +247,58 @@ class RemoteAllocator(Allocator['RemoteDevice']):
     return buffer_num
   # TODO: options should not be here in any Allocator
   def _free(self, opaque:int, options): self.dev.q(BufferFree(opaque))
-  def _copyin(self, dest:int, src:memoryview): self.dev.q(CopyIn(dest, self.dev.conn.req.h(src)))
-  def _copyout(self, dest:memoryview, src:int):
+  def _copyin(self, dest:int, src:memoryview, dtype=None, size=None):
+    print("rory copyin type =",dtype,bytes(src),size,len(bytes(src)))
+    if dtype == dtypes.float64:
+      x = b''.join(struct.pack('<f', float(v)) for v in struct.unpack('<' + 'd'*(len(src)//8), src))
+      print("rory x =",x)
+      self.dev.q(CopyIn(dest, self.dev.conn.req.h(x)), wait=True)
+      return
+    if len(bytes(src)) == size: #1 byte per item
+      print("CONVERT")
+      x = bytes(src)
+      vx = b''.join(struct.pack('<I', int(b)) for b in x)
+      self.dev.q(CopyIn(dest, self.dev.conn.req.h(vx)), wait=True)
+      return
+    if len(bytes(src)) == size*2:
+      x = bytes(src)
+      vx_chunks = [x[i:i+2] for i in range(0, len(x), 2)]
+      
+      def interpret_as_bool(chunk):
+        # Interpret as uint16 (preserves bits regardless of signed/float/bfloat)
+        val = struct.unpack('<H', chunk)[0]
+        return struct.pack('<I', int(bool(val)))  # 0 or 1 packed as uint32
+      vx = b''.join(interpret_as_bool(chunk) for chunk in vx_chunks)
+      self.dev.q(CopyIn(dest, self.dev.conn.req.h(vx)), wait=True)
+      return
+    self.dev.q(CopyIn(dest, self.dev.conn.req.h(bytes(src))),wait=True)
+
+  def float32_bytes_to_float64_bytes(self,input_bytes):
+      num_floats = len(input_bytes) // 4
+      float32_values = struct.unpack(f'<{num_floats}f', input_bytes)
+      float64_values = [float(x) for x in float32_values]
+      return struct.pack(f'<{num_floats}d', *float64_values)
+  
+  def _copyout(self, dest:memoryview, src:int,dtype=None):
     resp = self.dev.q(CopyOut(src), wait=True)
+    print("rory resp type =",dtype)
+    if dtype == dtypes.float64:
+      resp = resp[:int(len(resp)/2)]
+      resp = self.float32_bytes_to_float64_bytes(resp)
+    if dtype in [dtypes.bool,dtypes.int8,dtypes.uint8]:
+      vx_chunks = [resp[i:i+4] for i in range(0, len(resp), 4)]
+      resp = bytes(struct.unpack('<I', chunk)[0] for chunk in vx_chunks)
+    if dtype in [dtypes.int16, dtypes.uint16, dtypes.float16, dtypes.bfloat16]:
+      vx_chunks = [resp[i:i+2] for i in range(0, len(resp), 2)]
+      def to_uint32(chunk):
+        val = struct.unpack({
+          dtypes.uint16: '<H',
+          dtypes.int16:  '<h',
+          dtypes.float16: '<H',     # Just preserve bits
+          dtypes.bfloat16: '<H'     # Also preserve bits
+        }[dtype], chunk)[0]
+        return struct.pack('<I', val & 0xFFFF)  # Mask ensures it's within uint32 range
+      resp = b''.join(to_uint32(chunk) for chunk in vx_chunks)
     assert len(resp) == len(dest), f"buffer length mismatch {len(resp)} != {len(dest)}"
     dest[:] = resp
   def _transfer(self, dest, src, sz, src_dev, dest_dev):
@@ -293,6 +342,7 @@ class RemoteConnection:
 
   def batch_submit(self):
     data = self.req.serialize()
+    #print(data)
     with Timing(f"*** send {len(self.req._q):-3d} requests {len(self.req._h):-3d} hashes with len {len(data)/1024:.2f} kB in ", enabled=DEBUG>=3):
       self.conn.request("POST", "/batch", data)
       response = self.conn.getresponse()

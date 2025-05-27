@@ -141,7 +141,7 @@ class Buffer:
       assert hasattr(self.allocator, "_offset"), "offset function required for view"
       self._buf: Any = self.allocator._offset(self.base._buf, self.nbytes, self.offset)
     else:
-      self._buf = opaque if opaque is not None else self.allocator.alloc(self.nbytes, self.options)
+      self._buf = opaque if opaque is not None else self.allocator.alloc(self.nbytes, self.options, self.dtype)
       if not self.device.startswith("DISK"): GlobalCounters.mem_used += self.nbytes
     return self
   def deallocate(self):
@@ -185,13 +185,13 @@ class Buffer:
     mv = flat_mv(mv)
     assert len(mv) == self.nbytes, f"size mismatch, {len(mv)=} != {self.dtype=} {self.size=}"
     assert self.is_allocated(), "can't copyin to unallocated buffer"
-    self.allocator._copyin(self._buf, mv)
+    self.allocator._copyin(self._buf, mv, self.dtype, self.size)
     return self
   def copyout(self, mv:memoryview) -> memoryview:
     mv = flat_mv(mv)
     assert len(mv) == self.nbytes, f"size mismatch, {len(mv)=} != {self.dtype=} {self.size=}"
     assert self.is_allocated(), "can't copyout unallocated buffer"
-    self.allocator._copyout(mv, self._buf)
+    self.allocator._copyout(mv, self._buf, self.dtype)
     return mv
   def view(self, size:int, dtype:DType, offset:int) -> Buffer:
     assert offset < self.nbytes, "offset must be less than nbytes"
@@ -204,8 +204,12 @@ DeviceType = TypeVar('DeviceType', bound='Compiled')
 class Allocator(Generic[DeviceType]):
   def __init__(self, dev:DeviceType): self.dev: DeviceType = dev
   # overridden in LRUAllocator
-  def alloc(self, size:int, options:Optional[BufferSpec]=None):
+  def alloc(self, size:int, options:Optional[BufferSpec]=None,dtype=None):
     assert size > 0, f"alloc size must be positive, getting {size}"
+    if dtype in [dtypes.bool,dtypes.int8,dtypes.uint8,dtypes.uchar]:
+      size *= 4
+    if dtype in [dtypes.int16,dtypes.uint16,dtypes.float16,dtypes.bfloat16]:
+      size *= 2
     return self._alloc(size, options if options is not None else BufferSpec())
   def free(self, opaque, size:int, options:Optional[BufferSpec]=None): self._free(opaque, options if options is not None else BufferSpec())
 
@@ -226,7 +230,7 @@ class LRUAllocator(Allocator, Generic[DeviceType]):
   def __init__(self, dev:DeviceType):
     self.cache: dict[tuple[int, Optional[BufferSpec]], Any] = defaultdict(list)
     super().__init__(dev)
-  def alloc(self, size:int, options:Optional[BufferSpec]=None):
+  def alloc(self, size:int, options:Optional[BufferSpec]=None, dtype=None):
     if len(c := self.cache[(size, options)]): return c.pop()
     try: return super().alloc(size, options)
     except (RuntimeError, MemoryError):
@@ -251,8 +255,8 @@ class _MallocAllocator(LRUAllocator['Compiled']):
     offset = round_up(ctypes.addressof(buffer), alignment) - ctypes.addressof(buffer)
     return (ctypes.c_uint8 * size).from_buffer(buffer, offset)
   def _as_buffer(self, src) -> memoryview: return flat_mv(memoryview(src))
-  def _copyin(self, dest, src:memoryview): ctypes.memmove(dest, from_mv(src), len(src))
-  def _copyout(self, dest:memoryview, src): ctypes.memmove(from_mv(dest), src, len(dest))
+  def _copyin(self, dest, src:memoryview, dtype=None, size=None): ctypes.memmove(dest, from_mv(src), len(src))
+  def _copyout(self, dest:memoryview, src, dtype=None): ctypes.memmove(from_mv(dest), src, len(dest))
   def _offset(self, buf, size:int, offset:int): return from_mv(self._as_buffer(buf)[offset:offset+size])
 
 MallocAllocator = _MallocAllocator(None) # type: ignore
@@ -314,7 +318,9 @@ class CompileError(Exception): pass
 
 class Compiler:
   def __init__(self, cachekey:Optional[str]=None): self.cachekey = None if DISABLE_COMPILER_CACHE else cachekey
-  def compile(self, src:str) -> bytes: return src.encode()   # NOTE: empty compiler is the default
+  def compile(self, src:str) -> bytes:
+    if type(src) == bytes: return src #todo, do the vulkan compile here!
+    return src.encode()   # NOTE: empty compiler is the default
   def compile_cached(self, src:str) -> bytes:
     if self.cachekey is None or (lib := diskcache_get(self.cachekey, src)) is None:
       assert not getenv("ASSERT_COMPILE"), f"tried to compile with ASSERT_COMPILE set\n{src}"
@@ -350,6 +356,8 @@ class Compiled:
 # TODO: move this to each Device
 def is_dtype_supported(dtype:DType, device:Optional[str]=None) -> bool:
   if device is None: device = Device.DEFAULT
+  if dtype == dtypes.long: return False #not in vulkan?
+  if dtype == dtypes.uchar: return False #not in vulkan?
   if dtype == dtypes.bfloat16:
     if device == "METAL": return not CI
     if device in {"CUDA", "NV"}: return not CI and not getenv("PTX")
@@ -369,6 +377,7 @@ def is_dtype_supported(dtype:DType, device:Optional[str]=None) -> bool:
     if device in ["CUDA", "NV"]: return not CI
     if device == "LLVM": return OSX
     if device == "PYTHON": return sys.version_info >= (3, 12)
+  if dtype == dtypes.uint64: return device != "REMOTE" #todo vulkan
   if dtype == dtypes.float64: return device != "METAL" and not (OSX and device == "GPU")
   return True
 

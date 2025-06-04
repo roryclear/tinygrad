@@ -605,7 +605,7 @@ class QCOMRenderer(OpenCLRenderer): device = "QCOM"
 
 
 def compile_shader_to_spv(glsl_source: str) -> bytes:
-    print(glsl_source)
+    #print(glsl_source)
     with tempfile.NamedTemporaryFile(suffix=".comp", delete=False, mode="w") as temp_file:
         temp_file.write(glsl_source)
         temp_file_path = temp_file.name

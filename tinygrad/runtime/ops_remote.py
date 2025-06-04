@@ -252,13 +252,13 @@ class RemoteAllocator(Allocator['RemoteDevice']):
     if dtype == dtypes.float64:
       x = b''.join(struct.pack('<f', float(v)) for v in struct.unpack('<' + 'd'*(len(src)//8), src))
       print("rory x =",x)
-      self.dev.q(CopyIn(dest, self.dev.conn.req.h(x)), wait=True)
+      self.dev.q(CopyIn(dest, self.dev.conn.req.h(x)), wait=False)
       return
     if len(bytes(src)) == size: #1 byte per item
       print("CONVERT")
       x = bytes(src)
       vx = b''.join(struct.pack('<I', int(b)) for b in x)
-      self.dev.q(CopyIn(dest, self.dev.conn.req.h(vx)), wait=True)
+      self.dev.q(CopyIn(dest, self.dev.conn.req.h(vx)), wait=False)
       return
     if len(bytes(src)) == size*2:
       x = bytes(src)
@@ -269,9 +269,9 @@ class RemoteAllocator(Allocator['RemoteDevice']):
         val = struct.unpack('<H', chunk)[0]
         return struct.pack('<I', int(bool(val)))  # 0 or 1 packed as uint32
       vx = b''.join(interpret_as_bool(chunk) for chunk in vx_chunks)
-      self.dev.q(CopyIn(dest, self.dev.conn.req.h(vx)), wait=True)
+      self.dev.q(CopyIn(dest, self.dev.conn.req.h(vx)), wait=False)
       return
-    self.dev.q(CopyIn(dest, self.dev.conn.req.h(bytes(src))),wait=True)
+    self.dev.q(CopyIn(dest, self.dev.conn.req.h(bytes(src))),wait=False)
 
   def float32_bytes_to_float64_bytes(self,input_bytes):
       num_floats = len(input_bytes) // 4
@@ -342,6 +342,8 @@ class RemoteConnection:
 
   def batch_submit(self):
     data = self.req.serialize()
+    #open(next(f"batch_data{i}" for i in range(1 << 20) if not os.path.exists(f"batch_data{i}")), "wb").write(data)
+
     #print(data)
     with Timing(f"*** send {len(self.req._q):-3d} requests {len(self.req._h):-3d} hashes with len {len(data)/1024:.2f} kB in ", enabled=DEBUG>=3):
       self.conn.request("POST", "/batch", data)

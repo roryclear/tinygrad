@@ -248,7 +248,7 @@ class RemoteAllocator(Allocator['RemoteDevice']):
   # TODO: options should not be here in any Allocator
   def _free(self, opaque:int, options): self.dev.q(BufferFree(opaque))
   def _copyin(self, dest:int, src:memoryview, dtype=None, size=None):
-    print("rory copyin type =",dtype,bytes(src),size,len(bytes(src)))
+    #print("rory copyin type =",dtype,bytes(src),size,len(bytes(src)))
     if dtype == dtypes.float64:
       x = b''.join(struct.pack('<f', float(v)) for v in struct.unpack('<' + 'd'*(len(src)//8), src))
       print("rory x =",x)

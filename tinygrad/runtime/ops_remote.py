@@ -440,6 +440,7 @@ class RemoteProgram:
     script = re.sub(r'\b\w+\s+(\w+)\s*=', r'set \1 to', script) # assign
     script = re.sub(r'\*\(([^)]+)\)\s*=', r'set *(\1) to', script) #pointer assign
     script = script.replace("}","")
+    script = script.replace(";","")
     script = script[script.index("{")+1:]
     def replace_data_expr(match):
         a = int(match.group(1))
@@ -448,6 +449,8 @@ class RemoteProgram:
         final_cell = get_cell(base_cell + c)
         return final_cell
     script = re.sub(r"data(\d+)_[0-9]+\+(\d+)", replace_data_expr, script)
+    script = re.sub(r'\(\*\(([A-Z]+[0-9]+)\)\)', r'value of cell "\1"', script)
+    script = re.sub(r'set \*\(([A-Z]+[0-9]+)\) to', r'set value of cell "\1" to', script)
     print(script)
     ret = self.dev.q(ProgramExec(self.name, self.datahash, bufs, vals, global_size, local_size, wait), wait=wait)
     if wait: return float(ret)

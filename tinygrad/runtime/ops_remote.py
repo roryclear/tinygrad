@@ -361,7 +361,9 @@ class RemoteAllocator(Allocator['RemoteDevice']):
   def _free(self, opaque:int, options):
     try: self.dev.q(BufferFree(opaque))
     except (TypeError, AttributeError): pass
-  def _copyin(self, dest:int, src:memoryview): self.dev.q(CopyIn(dest, self.dev.conn.req.h(src)))
+  def _copyin(self, dest:int, src:memoryview, dtype:dtypes):
+    print("HERE",dtype)
+    self.dev.q(CopyIn(dest, self.dev.conn.req.h(src)))
   def _copyout(self, dest:memoryview, src:int):
     resp = self.dev.q(CopyOut(src), wait=True)
     assert len(resp) == len(dest), f"buffer length mismatch {len(resp)} != {len(dest)}"

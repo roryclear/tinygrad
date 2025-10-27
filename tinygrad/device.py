@@ -189,7 +189,7 @@ class Buffer:
     mv = flat_mv(mv)
     assert len(mv) == self.nbytes, f"size mismatch, {len(mv)=} != {self.dtype=} {self.size=}"
     assert self.is_initialized(), "can't copyin to unallocated buffer"
-    self.allocator._copyin(self._buf, mv)
+    self.allocator._copyin(self._buf, mv, self.dtype)
     return self
   def copyout(self, mv:memoryview) -> memoryview:
     mv = flat_mv(mv)

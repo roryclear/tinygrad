@@ -395,7 +395,7 @@ class RemoteAllocator(Allocator['RemoteDevice']):
     print(self.script)
     subprocess.run(['osascript', '-e', self.script], capture_output=True, text=True)
   def _copyout(self, dest:memoryview, src:int):
-    print("rory copyout src =",src,self.get_cell(src))
+    print("rory copyout src =",src, get_cell(src))
     resp = self.dev.q(CopyOut(src), wait=True)
     assert len(resp) == len(dest), f"buffer length mismatch {len(resp)} != {len(dest)}"
     dest[:] = resp
@@ -411,16 +411,15 @@ class RemoteAllocator(Allocator['RemoteDevice']):
   def _dyn_offset(self, opaque:int, size:int, offset:int) -> int:
     self.dev.q(BufferOffset(buffer_num:=next(self.dev.buffer_num), size, offset, opaque))
     return buffer_num
-
-  def get_cell(self,n): # todo to 1000 not 26
-    col = n % 26
-    row = int(n // 26) + 1
-    return chr(65 + col) + str(row)
   
   def copyin_numbers(self, x, cell):
-    cell = self.get_cell(cell)
+    cell = get_cell(cell)
     self.numbes_lines.append(f'set value of cell "{cell}" to {x}')
 
+def get_cell(n): # todo to 1000 not 26
+  col = n % 26
+  row = int(n // 26) + 1
+  return chr(65 + col) + str(row)
 
 class RemoteProgram:
   def __init__(self, dev:RemoteDevice, name:str, lib:bytes):
@@ -436,11 +435,20 @@ class RemoteProgram:
 
   def __call__(self, *bufs, global_size=None, local_size=None, vals:tuple[int, ...]=(), wait=False):
     print(self.lib,bufs)
+    cell_bufs = list(bufs)
+    for i in range(len(cell_bufs)): cell_bufs[i] = get_cell(cell_bufs[i])
     script = self.lib.decode('utf-8')
     script = re.sub(r'\b\w+\s+(\w+)\s*=', r'set \1 to', script) # assign
     script = re.sub(r'\*\(([^)]+)\)\s*=', r'set *(\1) to', script) #pointer assign
     script = script.replace("}","")
     script = script[script.index("{")+1:]
+    def replace_with_buf_content(match):
+      index = int(match.group(1))
+      if index < len(cell_bufs):
+          return str(cell_bufs[index])
+      else:
+          return match.group(0)
+    script = re.sub(r"data(\d+)_\d+", replace_with_buf_content, script)
     print(script)
     ret = self.dev.q(ProgramExec(self.name, self.datahash, bufs, vals, global_size, local_size, wait), wait=wait)
     if wait: return float(ret)

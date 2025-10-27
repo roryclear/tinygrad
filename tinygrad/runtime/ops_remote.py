@@ -357,10 +357,12 @@ class RemoteAllocator(Allocator['RemoteDevice']):
     if dev.properties.offset_supported: self._offset = self._dyn_offset
     super().__init__(dev)
   # TODO: ideally we shouldn't have to deal with images here
-  def _alloc(self, size:int, options:BufferSpec) -> int:
-    self.dev.q(BufferAlloc(buffer_num:=next(self.dev.buffer_num), size, options))
-    self.dev.buffer_num = itertools.count(buffer_num+int(size // 8)) # TODO remove 8
-    return buffer_num
+  def _alloc(self, size:int, itemsize:int, options:BufferSpec) -> int:
+    self.dev.q(BufferAlloc(self.dev.buffer_num, size, options))
+    numbers_size = int(size // itemsize)
+    print("rory nums size =",numbers_size, self.dev.buffer_num)
+    self.dev.buffer_num += numbers_size
+    return self.dev.buffer_num - numbers_size
   # TODO: options should not be here in any Allocator
   def _free(self, opaque:int, options):
     try: self.dev.q(BufferFree(opaque))
@@ -368,12 +370,10 @@ class RemoteAllocator(Allocator['RemoteDevice']):
   def _copyin(self, dest:int, src:memoryview, dtype:dtypes):
     self.dev.q(CopyIn(dest, self.dev.conn.req.h(src)))
     chunks = [bytes(src)[i:i+4] for i in range(0, len(bytes(src)), dtype.itemsize)]
-    print(chunks)
     if dtype == dtypes.int:
       for i in range(len(chunks)): chunks[i] = int.from_bytes(chunks[i], byteorder='little', signed=True)
     if dtype == dtypes.float:
       for i in range(len(chunks)): chunks[i] = struct.unpack('<f', chunks[i])[0]
-    print(chunks)
     for i in range(len(chunks)): self.copyin_numbers(chunks[i], (dest+i))
     inner = "\n                    ".join(self.numbes_lines)
     file = Path(__file__).parent / "tiny.numbers"
@@ -383,6 +383,9 @@ class RemoteAllocator(Allocator['RemoteDevice']):
         tell document 1
             tell sheet 1
                 tell table 1
+                        if count of columns < 9 then
+                            add column after column (count of columns)
+                        end if
                         {inner}
                 end tell
             end tell
@@ -499,7 +502,7 @@ class RemoteDevice(Compiled):
     self.conn: RemoteConnection = RemoteConnection(self.session.host)
 
     # state for the session
-    self.buffer_num: Iterator[int] = itertools.count(0)
+    self.buffer_num: Iterator[int] = 0
     self.graph_num: Iterator[int] = itertools.count(0)
     self.event_num: Iterator[int] = itertools.count(0)
 

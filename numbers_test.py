@@ -15,8 +15,8 @@ end tell
 '''
 result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
 
-x = Tensor([69,420])
-y = Tensor([70,421])
+x = Tensor([1,2,3])
+y = Tensor([4,5,6])
 print(x.numpy())
 print(y.numpy())
 #x = Tensor([10.0,20.0])

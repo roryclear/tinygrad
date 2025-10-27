@@ -135,7 +135,7 @@ class Buffer:
       assert hasattr(self.allocator, "_offset"), "offset function required for view"
       self._buf: Any = self.allocator._offset(self.base._buf, self.nbytes, self.offset)
     else:
-      self._buf = opaque if opaque is not None else self.allocator.alloc(self.nbytes, self.options)
+      self._buf = opaque if opaque is not None else self.allocator.alloc(self.nbytes, self.dtype.itemsize, self.options)
       if not self.device.startswith("DISK"): GlobalCounters.mem_used += self.nbytes
       if PROFILE: Buffer.profile_events.append(ProfilePointEvent(self.device, "alloc", self.trace_num, {"dtype":self.dtype, "sz":self.size}))
     return self
@@ -224,9 +224,9 @@ class Allocator(Generic[DeviceType]):
     self.default_buffer_spec: BufferSpec = BufferSpec()
     self.supports_copy_from_disk: bool = True
   # overridden in LRUAllocator
-  def alloc(self, size:int, options:BufferSpec|None=None):
+  def alloc(self, size:int, itemsize:int, options:BufferSpec|None=None):
     assert size > 0, f"alloc size must be positive, getting {size}"
-    return self._alloc(size, options if options is not None else self.default_buffer_spec)
+    return self._alloc(size, itemsize, options if options is not None else self.default_buffer_spec)
   def free(self, opaque, size:int, options:BufferSpec|None=None):
     self._free(opaque, options if options is not None else self.default_buffer_spec)
 

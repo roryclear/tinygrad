@@ -451,7 +451,21 @@ class RemoteProgram:
     script = re.sub(r"data(\d+)_[0-9]+\+(\d+)", replace_data_expr, script)
     script = re.sub(r'\(\*\(([A-Z]+[0-9]+)\)\)', r'value of cell "\1"', script)
     script = re.sub(r'set \*\(([A-Z]+[0-9]+)\) to', r'set value of cell "\1" to', script)
-    print(script)
+    script = f"""tell application "Numbers"
+        activate
+        tell document 1
+            tell sheet 1
+                tell table 1
+                    if count of columns < 9 then
+                        add column after column (count of columns)
+                    end if
+                    
+                    {script}
+                end tell
+            end tell
+        end tell
+    end tell"""
+    subprocess.run(['osascript', '-e', script], capture_output=True, text=True)
     ret = self.dev.q(ProgramExec(self.name, self.datahash, bufs, vals, global_size, local_size, wait), wait=wait)
     if wait: return float(ret)
 

@@ -74,6 +74,15 @@ class Scheduler:
 
     self.ast = self.ast.substitute(dict(zip(self.rngs, rng)))
 
+
+  def convert_loop_to_unroll(self):
+    if not self.ren.has_local: return None
+
+    globalizible_rngs = self._globalizable_rngs()
+    rng = [x.replace(arg=x.arg[0:-1]+(AxisType.UNROLL,)) if x in globalizible_rngs else x for x in self.rngs]
+
+    self.ast = self.ast.substitute(dict(zip(self.rngs, rng)))
+
   def colors(self) -> list[str]:
     output_rngs = self._globalizable_rngs()
     ret = []
@@ -324,7 +333,8 @@ def bufs_from_ast(ast:UOp, dname:str) -> list[Buffer]:
 def apply_opts(ast:UOp, ren:Renderer) -> UOp:
   if ast.tag is not None: return ast
   k = Scheduler(ast, ren)
-  k.convert_loop_to_global()
+  k.convert_loop_to_unroll()
+  return k.get_optimized_ast(name_override=ast.arg.name if ast.arg is not None and ast.arg.name != "test" else None)
   if ast.arg is not None and ast.arg.opts_to_apply is not None:
     for opt in ast.arg.opts_to_apply: k.apply_opt(opt)
   elif BEAM >= 1:

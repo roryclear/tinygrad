@@ -435,24 +435,23 @@ class RemoteProgram:
 
   def __call__(self, *bufs, global_size=None, local_size=None, vals:tuple[int, ...]=(), wait=False):
     print(self.lib,bufs)
+    cell_bufs = list(bufs)
+    for i in range(len(cell_bufs)): cell_bufs[i] = get_cell(cell_bufs[i])
     script = self.lib.decode('utf-8')
     script = re.sub(r'\b\w+\s+(\w+)\s*=', r'set \1 to', script) # assign
     script = re.sub(r'\*\(([^)]+)\)\s*=', r'set *(\1) to', script) #pointer assign
     script = script.replace("}","")
     script = script[script.index("{")+1:]
-    script = replace_pointer(script)
+    def replace_with_buf_content(match):
+      index = int(match.group(1))
+      if index < len(cell_bufs):
+          return str(cell_bufs[index])
+      else:
+          return match.group(0)
+    script = re.sub(r"data(\d+)_\d+", replace_with_buf_content, script)
     print(script)
     ret = self.dev.q(ProgramExec(self.name, self.datahash, bufs, vals, global_size, local_size, wait), wait=wait)
     if wait: return float(ret)
-
-def replace_pointer(expr):
-    # This will add a + and compute the index inside {}
-    def repl(match):
-        base = match.group(1)
-        offset = int(match.group(2))
-        add = int(match.group(3))
-        return f"data{offset + add}"
-    return re.sub(r'\*\(\s*(data)(\d+)_[0-9]+\s*\+\s*(\d+)\s*\)', repl, expr)
 
 @functools.cache
 class RemoteConnection:

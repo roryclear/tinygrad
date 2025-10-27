@@ -20,6 +20,7 @@ from tinygrad.device import Compiled, Buffer, Allocator, Compiler, Device, Buffe
 from tinygrad.runtime.support.ib import IBCtx, IBConn, SGE
 import subprocess
 from pathlib import Path
+import re
 
 # ***** API *****
 
@@ -424,6 +425,7 @@ class RemoteAllocator(Allocator['RemoteDevice']):
 class RemoteProgram:
   def __init__(self, dev:RemoteDevice, name:str, lib:bytes):
     self.dev, self.name = dev, name
+    self.lib = lib
     self.datahash = self.dev.conn.req.h(lib)
     self.dev.q(ProgramAlloc(self.name, self.datahash))
     super().__init__()
@@ -433,6 +435,18 @@ class RemoteProgram:
   def _fini(dev:RemoteDevice, name:str, datahash:str): dev.q(ProgramFree(name, datahash))
 
   def __call__(self, *bufs, global_size=None, local_size=None, vals:tuple[int, ...]=(), wait=False):
+    print(self.lib,bufs)
+    def for_loop_replacer(match):
+      var_name = match.group(1)
+      start = int(match.group(2))
+      end = int(match.group(3))
+      actual_end = end - 1  # Since it's < 3, not <= 3
+      return f'repeat with {var_name} from {start} to {actual_end}'
+    script = self.lib.decode('utf-8')
+    script = re.sub(r'for\s*\(\s*\w+\s+(\w+)\s*=\s*(\d+)\s*;\s*\1\s*<\s*(\d+)\s*;\s*\1\+\+\)\s*{', for_loop_replacer, script) # for loop
+    script = re.sub(r'\b\w+\s+(\w+)\s*=', r'set \1 to', script) # assign
+    script = script.replace("}","")
+    print(script)
     ret = self.dev.q(ProgramExec(self.name, self.datahash, bufs, vals, global_size, local_size, wait), wait=wait)
     if wait: return float(ret)
 

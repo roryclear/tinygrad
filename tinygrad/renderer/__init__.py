@@ -113,7 +113,7 @@ class Renderer:
   device: str = ""
   suffix: str = ""
   # TODO: make this generic with a list of supported types
-  supports_float4: bool = True
+  supports_float4: bool = False
   has_local: bool = True
   has_threads: bool = False
   has_shared: bool = True

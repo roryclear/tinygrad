@@ -17,8 +17,7 @@ result = subprocess.run(["osascript", "-e", script], capture_output=True, text=T
 
 x = Tensor([1,2,3])
 y = Tensor([4,5,6])
-print(x.numpy())
-print(y.numpy())
+print((x+y).numpy())
 #x = Tensor([10.0,20.0])
 #x = x.cast(dtype=dtypes.float)
 #print(x.numpy())

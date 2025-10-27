@@ -359,8 +359,7 @@ class RemoteAllocator(Allocator['RemoteDevice']):
   # TODO: ideally we shouldn't have to deal with images here
   def _alloc(self, size:int, itemsize:int, options:BufferSpec) -> int:
     self.dev.q(BufferAlloc(self.dev.buffer_num, size, options))
-    numbers_size = int(size // itemsize)
-    print("rory nums size =",numbers_size, self.dev.buffer_num)
+    numbers_size = size // itemsize
     self.dev.buffer_num += numbers_size
     return self.dev.buffer_num - numbers_size
   # TODO: options should not be here in any Allocator
@@ -395,6 +394,7 @@ class RemoteAllocator(Allocator['RemoteDevice']):
     print(self.script)
     subprocess.run(['osascript', '-e', self.script], capture_output=True, text=True)
   def _copyout(self, dest:memoryview, src:int):
+    print("rory copyout src =",src,self.get_cell(src))
     resp = self.dev.q(CopyOut(src), wait=True)
     assert len(resp) == len(dest), f"buffer length mismatch {len(resp)} != {len(dest)}"
     dest[:] = resp
@@ -502,7 +502,7 @@ class RemoteDevice(Compiled):
     self.conn: RemoteConnection = RemoteConnection(self.session.host)
 
     # state for the session
-    self.buffer_num: Iterator[int] = 0
+    self.buffer_num: int = 0
     self.graph_num: Iterator[int] = itertools.count(0)
     self.event_num: Iterator[int] = itertools.count(0)
 

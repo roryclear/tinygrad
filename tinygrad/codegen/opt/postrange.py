@@ -76,11 +76,7 @@ class Scheduler:
 
 
   def convert_loop_to_unroll(self):
-    if not self.ren.has_local: return None
-
-    globalizible_rngs = self._globalizable_rngs()
-    rng = [x.replace(arg=x.arg[0:-1]+(AxisType.UNROLL,)) if x in globalizible_rngs else x for x in self.rngs]
-
+    rng = [x.replace(arg=x.arg[0:-1]+(AxisType.UNROLL,)) for x in self.rngs]
     self.ast = self.ast.substitute(dict(zip(self.rngs, rng)))
 
   def colors(self) -> list[str]:

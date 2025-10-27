@@ -19,6 +19,7 @@ from tinygrad.engine.realize import CompiledRunner, BufferXfer
 from tinygrad.device import Compiled, Buffer, Allocator, Compiler, Device, BufferSpec
 from tinygrad.runtime.support.ib import IBCtx, IBConn, SGE
 import subprocess
+from pathlib import Path
 
 # ***** API *****
 
@@ -375,10 +376,11 @@ class RemoteAllocator(Allocator['RemoteDevice']):
     print(chunks)
     for i in range(len(chunks)): self.copyin_numbers(chunks[i], (dest+i))
     inner = "\n                    ".join(self.numbes_lines)
+    file = Path(__file__).parent / "tiny.numbers"
     self.script = f"""
     tell application "Numbers"
         activate
-        make new document
+        open POSIX file "{file}"
         tell document 1
             tell sheet 1
                 tell table 1

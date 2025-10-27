@@ -1,6 +1,21 @@
 from tinygrad import Tensor
 from tinygrad.dtype import dtypes
-x = Tensor([10,20])
+import subprocess
+import os
+from pathlib import Path
+
+
+file = Path(__file__).parent / "tiny.numbers"
+script = f'''
+tell application "Numbers"
+    activate
+    set newDoc to make new document
+    save newDoc in POSIX file "{file}"
+end tell
+'''
+result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+
+x = Tensor([69,420])
 print(x.numpy())
 #x = Tensor([10.0,20.0])
 #x = x.cast(dtype=dtypes.float)

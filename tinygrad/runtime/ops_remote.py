@@ -359,7 +359,7 @@ class RemoteAllocator(Allocator['RemoteDevice']):
   # TODO: ideally we shouldn't have to deal with images here
   def _alloc(self, size:int, options:BufferSpec) -> int:
     self.dev.q(BufferAlloc(buffer_num:=next(self.dev.buffer_num), size, options))
-    self.dev.buffer_num = itertools.count(buffer_num+size) # free up cells?
+    self.dev.buffer_num = itertools.count(buffer_num+int(size // 8)) # TODO remove 8
     return buffer_num
   # TODO: options should not be here in any Allocator
   def _free(self, opaque:int, options):
@@ -380,7 +380,6 @@ class RemoteAllocator(Allocator['RemoteDevice']):
     self.script = f"""
     tell application "Numbers"
         activate
-        open POSIX file "{file}"
         tell document 1
             tell sheet 1
                 tell table 1

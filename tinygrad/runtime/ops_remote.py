@@ -18,6 +18,7 @@ from tinygrad.engine.jit import GraphRunner, MultiGraphRunner, ExecItem, graph_c
 from tinygrad.engine.realize import CompiledRunner, BufferXfer
 from tinygrad.device import Compiled, Buffer, Allocator, Compiler, Device, BufferSpec
 from tinygrad.runtime.support.ib import IBCtx, IBConn, SGE
+import subprocess
 
 # ***** API *****
 
@@ -351,11 +352,13 @@ def remote_server(port:int):
 
 class RemoteAllocator(Allocator['RemoteDevice']):
   def __init__(self, dev:RemoteDevice):
+    self.numbes_lines = []
     if dev.properties.offset_supported: self._offset = self._dyn_offset
     super().__init__(dev)
   # TODO: ideally we shouldn't have to deal with images here
   def _alloc(self, size:int, options:BufferSpec) -> int:
     self.dev.q(BufferAlloc(buffer_num:=next(self.dev.buffer_num), size, options))
+    self.dev.buffer_num = itertools.count(buffer_num+size) # free up cells?
     return buffer_num
   # TODO: options should not be here in any Allocator
   def _free(self, opaque:int, options):
@@ -370,6 +373,23 @@ class RemoteAllocator(Allocator['RemoteDevice']):
     if dtype == dtypes.float:
       for i in range(len(chunks)): chunks[i] = struct.unpack('<f', chunks[i])[0]
     print(chunks)
+    for i in range(len(chunks)): self.copyin_numbers(chunks[i], (dest+i))
+    inner = "\n                    ".join(self.numbes_lines)
+    self.script = f"""
+    tell application "Numbers"
+        activate
+        make new document
+        tell document 1
+            tell sheet 1
+                tell table 1
+                        {inner}
+                end tell
+            end tell
+        end tell
+    end tell
+    """
+    print(self.script)
+    subprocess.run(['osascript', '-e', self.script], capture_output=True, text=True)
   def _copyout(self, dest:memoryview, src:int):
     resp = self.dev.q(CopyOut(src), wait=True)
     assert len(resp) == len(dest), f"buffer length mismatch {len(resp)} != {len(dest)}"
@@ -386,6 +406,16 @@ class RemoteAllocator(Allocator['RemoteDevice']):
   def _dyn_offset(self, opaque:int, size:int, offset:int) -> int:
     self.dev.q(BufferOffset(buffer_num:=next(self.dev.buffer_num), size, offset, opaque))
     return buffer_num
+
+  def get_cell(self,n): # todo to 1000 not 26
+    col = n % 26
+    row = int(n // 26) + 1
+    return chr(65 + col) + str(row)
+  
+  def copyin_numbers(self, x, cell):
+    cell = self.get_cell(cell)
+    self.numbes_lines.append(f'set value of cell "{cell}" to {x}')
+
 
 class RemoteProgram:
   def __init__(self, dev:RemoteDevice, name:str, lib:bytes):

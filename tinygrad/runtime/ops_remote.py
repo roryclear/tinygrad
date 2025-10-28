@@ -385,15 +385,13 @@ class RemoteAllocator(Allocator['RemoteDevice']):
         tell document 1
             tell sheet 1
                 tell table 1
-                        if count of columns < 9 then
-                            add column after column (count of columns)
-                        end if
                         {inner}
                 end tell
             end tell
         end tell
     end tell
     """
+
     print(self.script)
     subprocess.run(['osascript', '-e', self.script], capture_output=True, text=True)
   def _copyout(self, dest:memoryview, src:int):
@@ -480,7 +478,12 @@ class RemoteProgram:
       freeze_line = f'set value of cell "{cell}" to value of cell "{cell}"'
       return assignment + "\n" + freeze_line
     script = re.sub(r'set value of cell "([A-Z]+\d+)" to [^\n]+', add_static_freeze, script)
-
+    script = re.sub(
+        r'(set value of cell "[A-Z]+1" to "=\([^"]*)"(\+.*?)(?=\s*set value of cell "[A-Z]+1" to value of cell)',
+        r'\1\2"',
+        script,
+        flags=re.DOTALL
+    )
     script = f"""tell application "Numbers"
         activate
         tell document 1

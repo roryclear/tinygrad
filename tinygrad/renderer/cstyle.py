@@ -337,7 +337,8 @@ class MetalRenderer(CStyleLanguage):
   simdgroup_multiply_accumulate(mat_c, mat_a, mat_b, mat_c);\n  return {dstr_out}(mat_c.thread_elements()[0], mat_c.thread_elements()[1]);\n}}""")
     return super().render_kernel(function_name, kernel, bufs, uops, prefix)
 
-class SheetRenderer(MetalRenderer): pass
+class SheetRenderer(MetalRenderer):
+  supports_float4: bool = False
 
 _nms = "xyzwabcdefghijkl"
 

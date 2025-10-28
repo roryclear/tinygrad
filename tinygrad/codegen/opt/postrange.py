@@ -329,17 +329,18 @@ def bufs_from_ast(ast:UOp, dname:str) -> list[Buffer]:
 def apply_opts(ast:UOp, ren:Renderer) -> UOp:
   if ast.tag is not None: return ast
   k = Scheduler(ast, ren)
-  k.convert_loop_to_unroll()
-  return k.get_optimized_ast(name_override=ast.arg.name if ast.arg is not None and ast.arg.name != "test" else None)
-  if ast.arg is not None and ast.arg.opts_to_apply is not None:
-    for opt in ast.arg.opts_to_apply: k.apply_opt(opt)
-  elif BEAM >= 1:
-    from tinygrad.codegen.opt.search import beam_search
-    rawbufs = bufs_from_ast(ast, ren.device)
-    k = beam_search(k, rawbufs, BEAM.value, bool(getenv("BEAM_ESTIMATE", 1)))
-  elif not NOOPT and (ast.arg is None or ast.arg.applied_opts == ()):
-    from tinygrad.codegen.opt.heuristic import hand_coded_optimizations
-    # NOTE: hand_coded_optimizations doesn't support multiblock opts yet
-    if not any(u.op is Ops.AFTER and u.src[0].op is Ops.DEFINE_LOCAL for u in ast.backward_slice):
-      k = hand_coded_optimizations(k)
+  if ren.__class__.__name__ == "SheetRenderer":
+    k.convert_loop_to_unroll()
+  else:
+    if ast.arg is not None and ast.arg.opts_to_apply is not None:
+      for opt in ast.arg.opts_to_apply: k.apply_opt(opt)
+    elif BEAM >= 1:
+      from tinygrad.codegen.opt.search import beam_search
+      rawbufs = bufs_from_ast(ast, ren.device)
+      k = beam_search(k, rawbufs, BEAM.value, bool(getenv("BEAM_ESTIMATE", 1)))
+    elif not NOOPT and (ast.arg is None or ast.arg.applied_opts == ()):
+      from tinygrad.codegen.opt.heuristic import hand_coded_optimizations
+      # NOTE: hand_coded_optimizations doesn't support multiblock opts yet
+      if not any(u.op is Ops.AFTER and u.src[0].op is Ops.DEFINE_LOCAL for u in ast.backward_slice):
+        k = hand_coded_optimizations(k)
   return k.get_optimized_ast(name_override=ast.arg.name if ast.arg is not None and ast.arg.name != "test" else None)

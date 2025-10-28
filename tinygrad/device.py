@@ -195,7 +195,10 @@ class Buffer:
     mv = flat_mv(mv)
     assert len(mv) == self.nbytes, f"size mismatch, {len(mv)=} != {self.dtype=} {self.size=}"
     assert self.is_initialized(), "can't copyout unallocated buffer"
-    self.allocator._copyout(mv, self._buf, self.dtype)
+    if self.device == "SHEET":
+      self.allocator._copyout(mv, self._buf, self.dtype)
+    else:
+      self.allocator._copyout(mv, self._buf)
     return mv
   def view(self, size:int, dtype:DType, offset:int) -> Buffer:
     assert offset < self.nbytes, "offset must be less than nbytes"

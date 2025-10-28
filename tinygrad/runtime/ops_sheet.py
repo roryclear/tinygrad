@@ -168,6 +168,6 @@ class SheetProgram:
 class SheetDevice(Compiled):
   def __init__(self, device:str):
     self.buffer_num: int = 0
-    from tinygrad.renderer.cstyle import MetalRenderer
-    super().__init__(device, SheetAllocator(self), [(MetalRenderer, Compiler)], functools.partial(SheetProgram, self))
+    from tinygrad.renderer.cstyle import SheetRenderer
+    super().__init__(device, SheetAllocator(self), [(SheetRenderer, Compiler)], functools.partial(SheetProgram, self))
     self.renderer.device = device

@@ -391,15 +391,46 @@ class RemoteAllocator(Allocator['RemoteDevice']):
         end tell
     end tell
     """
-
     print(self.script)
     subprocess.run(['osascript', '-e', self.script], capture_output=True, text=True)
   def _copyout(self, dest:memoryview, src:int, dtype:dtypes):
     ncells = int(len(dest) // dtype.itemsize)
-    print("rory copyout src =",src, get_cell(src), "ncells =",ncells)
     cells = []
     for i in range(ncells): cells.append(get_cell(src+i))
     print("cells =",cells)
+
+    cell_refs = ", ".join([f'"{cell}"' for cell in cells])
+
+    self.script = f'''
+    tell application "Numbers"
+        activate
+        tell document 1
+            tell sheet 1
+                tell table 1
+                    set valueList to {{}}
+                    repeat with cellRef in {{{cell_refs}}}
+                        set end of valueList to value of cell cellRef
+                    end repeat
+                    set output to ""
+                    repeat with i from 1 to count of valueList
+                        set output to output & (item i of valueList) as text
+                        if i < count of valueList then set output to output & ", "
+                    end repeat
+                    return output
+                end tell
+            end tell
+        end tell
+    end tell
+    '''
+    print("AppleScript:")
+    print(self.script)
+    result = subprocess.run(['osascript', '-e', self.script], capture_output=True, text=True)
+    result = result.stdout.replace(" ","").replace("\n","").split(",")
+    result = [float(x) for x in result]
+    byte_data_32 = b''.join(struct.pack('f', x) for x in result)
+    dest[:] = byte_data_32
+    return
+
     resp = self.dev.q(CopyOut(src), wait=True)
     assert len(resp) == len(dest), f"buffer length mismatch {len(resp)} != {len(dest)}"
     dest[:] = resp

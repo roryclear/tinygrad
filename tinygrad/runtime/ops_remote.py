@@ -394,8 +394,12 @@ class RemoteAllocator(Allocator['RemoteDevice']):
 
     print(self.script)
     subprocess.run(['osascript', '-e', self.script], capture_output=True, text=True)
-  def _copyout(self, dest:memoryview, src:int):
-    print("rory copyout src =",src, get_cell(src))
+  def _copyout(self, dest:memoryview, src:int, dtype:dtypes):
+    ncells = int(len(dest) // dtype.itemsize)
+    print("rory copyout src =",src, get_cell(src), "ncells =",ncells)
+    cells = []
+    for i in range(ncells): cells.append(get_cell(src+i))
+    print("cells =",cells)
     resp = self.dev.q(CopyOut(src), wait=True)
     assert len(resp) == len(dest), f"buffer length mismatch {len(resp)} != {len(dest)}"
     dest[:] = resp

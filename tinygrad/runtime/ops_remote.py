@@ -469,17 +469,15 @@ class RemoteProgram:
       return f'{cell}' # todo add back the quotes ?
     script = re.sub(r'\bval(\d+)\b', replace_val, script)
 
-    script = re.sub(
-        r'set\s+([A-Z]+\d+)\s+to\s+value of cell\s+"([A-Z]+\d+)"',
-        r'set value of cell "\1" to value of cell "\2"',
-        script
-    )
+    script = re.sub(r'set\s+([A-Z]+\d+)\s+to\s+value of cell\s+"([A-Z]+\d+)"', r'set value of cell "\1" to value of cell "\2"', script)
+    script = re.sub(r'set value of cell "([A-Z]+\d+)" to \(([^)]+)\)', lambda m: f'set value of cell "{m.group(1)}" to "={m.group(2)}"', script)
 
-    script = re.sub(
-        r'set value of cell "([A-Z]+\d+)" to \(([^)]+)\)',
-        lambda m: f'set value of cell "{m.group(1)}" to "={m.group(2)}"',
-        script
-    )
+    def add_static_freeze(match):
+      cell = match.group(1)
+      assignment = match.group(0)
+      freeze_line = f'set value of cell "{cell}" to value of cell "{cell}"'
+      return assignment + "\n" + freeze_line
+    script = re.sub(r'set value of cell "([A-Z]+\d+)" to [^\n]+', add_static_freeze, script)
 
     script = f"""tell application "Numbers"
         activate

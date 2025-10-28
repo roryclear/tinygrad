@@ -14,7 +14,7 @@ tell application "Numbers"
         tell sheet 1
             tell table 1
                 set column count to 1000
-                set row count to 1000
+                set row count to 1000000
             end tell
         end tell
     end tell
@@ -24,11 +24,9 @@ end tell
 result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
 #exit()
 
-#x = Tensor([1,2,3])
-#y = Tensor([4,5,6])
-#print((x+y).numpy())
-x = Tensor.arange(1000)
-print(x.numpy())
+x = Tensor([1,2,3])
+y = Tensor([4,5,6])
+print((x*y.sum()).numpy())
 #x = Tensor([10.0,20.0])
 #x = x.cast(dtype=dtypes.float)
 #print(x.numpy())

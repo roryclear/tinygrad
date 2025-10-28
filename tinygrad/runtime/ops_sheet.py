@@ -21,6 +21,8 @@ import re
 class SheetAllocator(Allocator['SheetDevice']):
   def __init__(self, dev:SheetDevice):
     self.numbes_lines = []
+    self.numbes_lines_csv = []
+    Path("tiny.csv").touch()
     file = Path(__file__).parent / "tiny.numbers"
     script = f'''
     tell application "Numbers"
@@ -104,6 +106,7 @@ class SheetAllocator(Allocator['SheetDevice']):
   def _transfer(self, dest, src, sz, src_dev, dest_dev): return
   def _dyn_offset(self, opaque:int, size:int, offset:int) -> int: return
   def copyin_numbers(self, x, cell):
+    self.numbes_lines_csv.append([cell, x])
     cell = get_cell(cell)
     self.numbes_lines.append(f'set value of cell "{cell}" to {x}')
 
@@ -149,9 +152,10 @@ class SheetProgram:
     script = re.sub(r'set \*\(([A-Z]+[0-9]+)\) to', r'set value of cell "\1" to', script)
     def replace_val(match):
       n = int(match.group(1))
-      cell = get_temp_cell(n)
+      cell = get_cell(self.dev.buffer_num+1+n)
       return f'{cell}' # todo add back the quotes ?
     script = re.sub(r'\bval(\d+)\b', replace_val, script)
+    self.dev.buffer_num += len(cell_bufs) - 1
 
     script = re.sub(r'set\s+([A-Z]+\d+)\s+to\s+value of cell\s+"([A-Z]+\d+)"', r'set value of cell "\1" to value of cell "\2"', script)
     script = re.sub(r'set value of cell "([A-Z]+\d+)" to \(([^)]+)\)', lambda m: f'set value of cell "{m.group(1)}" to "={m.group(2)}"', script)

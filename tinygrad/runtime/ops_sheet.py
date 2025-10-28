@@ -21,6 +21,23 @@ import re
 class SheetAllocator(Allocator['SheetDevice']):
   def __init__(self, dev:SheetDevice):
     self.numbes_lines = []
+    file = Path(__file__).parent / "tiny.numbers"
+    script = f'''
+    tell application "Numbers"
+        activate
+        set newDoc to make new document
+        tell newDoc
+            tell sheet 1
+                tell table 1
+                    set column count to 1000
+                    set row count to 1000000
+                end tell
+            end tell
+        end tell
+        save newDoc in POSIX file "{file}"
+    end tell
+    '''
+    subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
     super().__init__(dev)
   def _alloc(self, size:int, itemsize:int, options:BufferSpec) -> int:
     numbers_size = size // itemsize

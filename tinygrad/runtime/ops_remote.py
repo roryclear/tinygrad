@@ -346,24 +346,9 @@ class RemoteConnection:
   q_lock = threading.Lock()
   all: dict[RemoteConnection, None] = {} # dict instead of set for deterministic ordering
 
-  def __init__(self, host:str):
-    if DEBUG >= 1: print(f"remote with host {host}")
-    while 1:
-      try:
-        self.conn = http.client.HTTPConnection(host, timeout=getenv("REMOTE_TIMEOUT", 300.0))
-        self.conn.connect()
-        break
-      except Exception as e:
-        print(e)
-        time.sleep(0.1)
-    self.req: BatchRequest = BatchRequest()
-    RemoteConnection.all[self] = None
+  def __init__(self, host:str): return
 
-  def q(self, x:RemoteRequest, wait:bool=False):
-    with RemoteConnection.q_lock:
-      self.req.q(x)
-      if wait: return self.batch_submit(take_q=False)
-
+  def q(self, x:RemoteRequest, wait:bool=False): return
   async def aq(self, x:RemoteRequest, wait:bool=False): return await asyncio.to_thread(self.q, x, wait=wait)
 
   def batch_submit(self, take_q:bool=True):
@@ -420,15 +405,8 @@ class RemoteDevice(Compiled):
     super().__init__(device, RemoteAllocator(self), compilers, functools.partial(RemoteProgram, self), graph, id(self.conn))
     self.renderer.device = device
 
-  def finalize(self):
-    with contextlib.suppress(ConnectionError, http.client.HTTPException): self.q(SessionFree(), wait=True)
-
-  def q(self, x:RemoteRequest, wait:bool=False): return self.conn.q(replace(x, session=self.session), wait=wait)
-
   @functools.cache
   @staticmethod
   def local_server():
     multiprocessing.Process(target=remote_server, args=(6667,), name="MainProcess", daemon=True).start()
     return "127.0.0.1:6667"
-
-if __name__ == "__main__": remote_server(getenv("PORT", 6667))

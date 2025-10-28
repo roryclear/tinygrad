@@ -174,53 +174,11 @@ class RemoteSession:
   events: defaultdict[int, asyncio.Event] = field(default_factory=functools.partial(defaultdict, asyncio.Event))
 
 class RemoteHandler:
-  def __init__(self, base_device: str):
-    self.base_device = base_device
-    self.sessions: defaultdict[SessionKey, RemoteSession] = defaultdict(RemoteSession)
+  def __init__(self, base_device: str): return
 
-    try: self.ib_ctx: IBCtx|None = IBCtx(getenv("IB_DEV", 0))
-    except (RuntimeError, IndexError, AttributeError): self.ib_ctx = None
-    self.ib_lock = asyncio.Lock()
-    self.ib_conns: dict[str, IBConn|None] = {}
-    self.iova_cache: dict[tuple[SessionKey, int], tuple[int, int, int]] = {}
-
-  async def __call__(self, reader:asyncio.StreamReader, writer:asyncio.StreamWriter):
-    while (req_hdr:=(await reader.readline()).decode().strip()):
-      req_method, req_path, _ = req_hdr.split(' ')
-      req_headers = {}
-      while (hdr:=(await reader.readline()).decode().strip()):
-        key, value = hdr.split(':', 1)
-        req_headers[key.lower()] = value.strip()
-      req_body = await reader.readexactly(int(req_headers.get("content-length", "0")))
-      try: res_status, res_body = await self.handle(req_method, req_path, req_body)
-      except Exception as e:
-        res_status, res_body = http.HTTPStatus.INTERNAL_SERVER_ERROR, repr(RemoteException(e, traceback.format_exc())).encode()
-        print(f"{traceback.format_exc()}", flush=True)
-      writer.write(f"HTTP/1.1 {res_status.value} {res_status.phrase}\r\nContent-Length: {len(res_body)}\r\n\r\n".encode() + res_body)
-
+  async def __call__(self, reader:asyncio.StreamReader, writer:asyncio.StreamWriter): return
   async def ib_connect(self, ssession:SessionKey, dsession:SessionKey) -> IBConn|None: return
-
-  async def get_iovas(self, bufs:list[tuple[SessionKey, int]]) -> list[tuple[int, int, int]]:
-    await self.ib_lock.acquire()
-    if (rbufs:=[buf for buf in bufs if buf not in self.iova_cache]):
-      conn = RemoteConnection(rbufs[0][0].host)
-      resp = await conn.aq(BufferIOVAS(rbufs, session=rbufs[0][0]), wait=True)
-      self.iova_cache.update({rbuf: struct.unpack('<QQQ', resp[i*24:(i+1)*24]) for i,rbuf in enumerate(rbufs)})
-    self.ib_lock.release()
-    return [self.iova_cache[buf] for buf in bufs]
-
-  async def handle(self, method:str, path:str, body:bytes) -> tuple[http.HTTPStatus, bytes]:
-    status, ret = http.HTTPStatus.OK, b""
-    if path == "/batch" and method == "POST":
-      # TODO: streaming deserialize?
-      req = BatchRequest().deserialize(body)
-      # the cmds are always last (currently in datahash)
-      for c in req._q:
-        if DEBUG >= 1: print(c)
-        session, dev = self.sessions[unwrap(c.session)], Device[f"{self.base_device}:{unwrap(c.session).idx}"]
-        continue
-    else: status, ret = http.HTTPStatus.NOT_FOUND, b"Not Found"
-    return status, ret
+  async def handle(self, method:str, path:str, body:bytes) -> tuple[http.HTTPStatus, bytes]: return http.HTTPStatus.OK, b""
 
 def remote_server(port:int):
   device = getenv("REMOTEDEV", next(Device.get_available_devices()) if Device.DEFAULT == "REMOTE" else Device.DEFAULT)

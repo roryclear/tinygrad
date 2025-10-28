@@ -416,10 +416,21 @@ class RemoteAllocator(Allocator['RemoteDevice']):
     cell = get_cell(cell)
     self.numbes_lines.append(f'set value of cell "{cell}" to {x}')
 
-def get_cell(n): # todo to 1000 not 26
-  col = n % 26
-  row = int(n // 26) + 1
-  return chr(65 + col) + str(row)
+def get_cell(n, max_cols=1000):  # max_cols is how many columns per row
+    def number_to_column(num):
+        column = ""
+        num = num + 1
+        while num > 0:
+            num, remainder = divmod(num - 1, 26)
+            column = chr(65 + remainder) + column
+        return column
+
+    col_index = n % max_cols
+    row_index = n // max_cols
+    col = number_to_column(col_index)
+    row = row_index + 1
+    return f"{col}{row}"
+
 
 class RemoteProgram:
   def __init__(self, dev:RemoteDevice, name:str, lib:bytes):
@@ -512,9 +523,10 @@ class RemoteConnection:
       match resp.status:
         case http.HTTPStatus.OK: pass
         case http.HTTPStatus.INTERNAL_SERVER_ERROR:
-          exc_wrapper = safe_eval(ast.parse(body.decode(), mode="eval").body)
-          exc_wrapper.exc.add_note(exc_wrapper.trace)
-          raise exc_wrapper.exc
+          #exc_wrapper = safe_eval(ast.parse(body.decode(), mode="eval").body)
+          #exc_wrapper.exc.add_note(exc_wrapper.trace)
+          #raise exc_wrapper.exc
+          return 0.0
         case code: raise RuntimeError(f"POST /batch failed with {code}: {body.decode()}")
       if conn == self: ret = body
     return ret

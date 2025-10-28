@@ -431,6 +431,8 @@ def get_cell(n, max_cols=1000):  # max_cols is how many columns per row
     row = row_index + 1
     return f"{col}{row}"
 
+def get_temp_cell(n, max_cols=1000): return get_cell(1_000 - n) # todo 1 billion
+
 
 class RemoteProgram:
   def __init__(self, dev:RemoteDevice, name:str, lib:bytes):
@@ -445,7 +447,6 @@ class RemoteProgram:
   def _fini(dev:RemoteDevice, name:str, datahash:str): dev.q(ProgramFree(name, datahash))
 
   def __call__(self, *bufs, global_size=None, local_size=None, vals:tuple[int, ...]=(), wait=False):
-    print(self.lib,bufs)
     cell_bufs = list(bufs)
     script = self.lib.decode('utf-8')
     script = re.sub(r'\b\w+\s+(\w+)\s*=', r'set \1 to', script) # assign
@@ -462,20 +463,24 @@ class RemoteProgram:
     script = re.sub(r"data(\d+)_[0-9]+\+(\d+)", replace_data_expr, script)
     script = re.sub(r'\(\*\(([A-Z]+[0-9]+)\)\)', r'value of cell "\1"', script)
     script = re.sub(r'set \*\(([A-Z]+[0-9]+)\) to', r'set value of cell "\1" to', script)
+    def replace_val(match):
+      n = int(match.group(1))
+      cell = get_temp_cell(n)
+      return f'{cell}' #add back the quotes
+      return f'"{cell}"'
+
+    script = re.sub(r'\bval(\d+)\b', replace_val, script)
     script = f"""tell application "Numbers"
         activate
         tell document 1
             tell sheet 1
                 tell table 1
-                    if count of columns < 9 then
-                        add column after column (count of columns)
-                    end if
-                    
                     {script}
                 end tell
             end tell
         end tell
     end tell"""
+    print(script)
     subprocess.run(['osascript', '-e', script], capture_output=True, text=True)
     ret = self.dev.q(ProgramExec(self.name, self.datahash, bufs, vals, global_size, local_size, wait), wait=wait)
     if wait: return float(ret)

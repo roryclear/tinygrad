@@ -370,6 +370,8 @@ class RemoteAllocator(Allocator['RemoteDevice']):
   def _copyin(self, dest:int, src:memoryview, dtype:dtypes):
     self.dev.q(CopyIn(dest, self.dev.conn.req.h(src)))
     chunks = [bytes(src)[i:i+4] for i in range(0, len(bytes(src)), dtype.itemsize)]
+    if dtype == dtypes.uint:
+      for i in range(len(chunks)): chunks[i] = int.from_bytes(chunks[i], byteorder='little', signed=False)
     if dtype == dtypes.int:
       for i in range(len(chunks)): chunks[i] = int.from_bytes(chunks[i], byteorder='little', signed=True)
     if dtype == dtypes.float:
@@ -431,7 +433,7 @@ def get_cell(n, max_cols=1000):  # max_cols is how many columns per row
     row = row_index + 1
     return f"{col}{row}"
 
-def get_temp_cell(n, max_cols=1000): return get_cell(1_000_000 - n) # todo 1 billion
+def get_temp_cell(n, max_cols=1000): return get_cell(999_999_999 - n)
 
 
 class RemoteProgram:

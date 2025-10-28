@@ -3,6 +3,7 @@ from tinygrad.dtype import dtypes
 import subprocess
 import os
 from pathlib import Path
+import numpy as np
 
 
 file = Path(__file__).parent / "tinygrad" / "runtime" / "tiny.numbers"
@@ -23,10 +24,11 @@ end tell
 '''
 result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
 #exit()
-
-x = Tensor([1,2,3])
-y = Tensor([4,5,6])
-print((x*y.sum()).numpy())
+x = np.random.random((5, 5)).astype(np.float32)
+y = np.random.random((5, 5)).astype(np.float32)
+x = Tensor(x)
+y = Tensor(y)
+print((x+y).numpy())
 #x = Tensor([10.0,20.0])
 #x = x.cast(dtype=dtypes.float)
 #print(x.numpy())

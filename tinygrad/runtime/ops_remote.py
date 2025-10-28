@@ -355,11 +355,9 @@ def remote_server(port:int):
 class RemoteAllocator(Allocator['RemoteDevice']):
   def __init__(self, dev:RemoteDevice):
     self.numbes_lines = []
-    if dev.properties.offset_supported: self._offset = self._dyn_offset
     super().__init__(dev)
   # TODO: ideally we shouldn't have to deal with images here
   def _alloc(self, size:int, itemsize:int, options:BufferSpec) -> int:
-    self.dev.q(BufferAlloc(self.dev.buffer_num, size, options))
     numbers_size = size // itemsize
     self.dev.buffer_num += numbers_size
     return self.dev.buffer_num - numbers_size
@@ -374,7 +372,6 @@ class RemoteAllocator(Allocator['RemoteDevice']):
       for i in range(len(chunks)): chunks[i] = struct.unpack('<f', chunks[i])[0]
     for i in range(len(chunks)): self.copyin_numbers(chunks[i], (dest+i))
     inner = "\n                    ".join(self.numbes_lines)
-    file = Path(__file__).parent / "tiny.numbers"
     self.script = f"""
     tell application "Numbers"
         activate
@@ -393,10 +390,7 @@ class RemoteAllocator(Allocator['RemoteDevice']):
     ncells = int(len(dest) // dtype.itemsize)
     cells = []
     for i in range(ncells): cells.append(get_cell(src+i))
-    print("cells =",cells)
-
     cell_refs = ", ".join([f'"{cell}"' for cell in cells])
-
     self.script = f'''
     tell application "Numbers"
         activate

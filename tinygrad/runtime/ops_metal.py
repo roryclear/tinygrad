@@ -195,7 +195,7 @@ class MetalBuffer:
   def __init__(self, buf:Any, size:int, offset=0): self.buf, self.size, self.offset = buf, size, offset
 
 class MetalAllocator(LRUAllocator[MetalDevice]):
-  def _alloc(self, size:int, options) -> MetalBuffer:
+  def _alloc(self, size:int, itemsize=8, options=None) -> MetalBuffer:
     if options.external_ptr: return MetalBuffer(objc_id(options.external_ptr), size)
 
     # Buffer is explicitly released in _free() rather than garbage collected via reference count

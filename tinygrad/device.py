@@ -247,7 +247,7 @@ class LRUAllocator(Allocator, Generic[DeviceType]):
   def __init__(self, dev:DeviceType):
     self.cache: dict[tuple[int, BufferSpec|None], Any] = defaultdict(list)
     super().__init__(dev)
-  def alloc(self, size:int, options:BufferSpec|None=None):
+  def alloc(self, size:int, itemsize=8, options:BufferSpec|None=None):
     if len(c := self.cache[(size, options)]): return c.pop()
     try: return super().alloc(size, options)
     except (RuntimeError, MemoryError):

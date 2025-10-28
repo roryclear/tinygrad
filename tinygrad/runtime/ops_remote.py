@@ -466,10 +466,21 @@ class RemoteProgram:
     def replace_val(match):
       n = int(match.group(1))
       cell = get_temp_cell(n)
-      return f'{cell}' #add back the quotes
-      return f'"{cell}"'
-
+      return f'{cell}' # todo add back the quotes ?
     script = re.sub(r'\bval(\d+)\b', replace_val, script)
+
+    script = re.sub(
+        r'set\s+([A-Z]+\d+)\s+to\s+value of cell\s+"([A-Z]+\d+)"',
+        r'set value of cell "\1" to value of cell "\2"',
+        script
+    )
+
+    script = re.sub(
+        r'set value of cell "([A-Z]+\d+)" to \(([^)]+)\)',
+        lambda m: f'set value of cell "{m.group(1)}" to "={m.group(2)}"',
+        script
+    )
+
     script = f"""tell application "Numbers"
         activate
         tell document 1

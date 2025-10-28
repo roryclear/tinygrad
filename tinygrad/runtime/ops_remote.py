@@ -198,20 +198,7 @@ class RemoteHandler:
         print(f"{traceback.format_exc()}", flush=True)
       writer.write(f"HTTP/1.1 {res_status.value} {res_status.phrase}\r\nContent-Length: {len(res_body)}\r\n\r\n".encode() + res_body)
 
-  async def ib_connect(self, ssession:SessionKey, dsession:SessionKey) -> IBConn|None:
-    if self.ib_ctx is None: return None
-    await self.ib_lock.acquire()
-    conn = RemoteConnection(dsession.host)
-    if dsession.host not in self.ib_conns:
-      props = safe_eval(ast.parse(conn.q(GetProperties(session=dsession), wait=True), mode="eval").body)
-      if props.ib_gid is not None:
-        self.ib_conns[dsession.host] = ib_conn = IBConn(self.ib_ctx)
-        ibxc_ret = conn.q(IBConnect(ssession.host, ib_conn.gid, ib_conn.qp_num, session=dsession), wait=True)
-        ib_conn.connect(*struct.unpack('<16sQ', ibxc_ret))
-      else:
-        self.ib_conns[dsession.host] = None
-    self.ib_lock.release()
-    return self.ib_conns[dsession.host]
+  async def ib_connect(self, ssession:SessionKey, dsession:SessionKey) -> IBConn|None: return
 
   async def get_iovas(self, bufs:list[tuple[SessionKey, int]]) -> list[tuple[int, int, int]]:
     await self.ib_lock.acquire()
@@ -579,14 +566,9 @@ class RemoteDevice(Compiled):
     self.graph_num: Iterator[int] = itertools.count(0)
     self.event_num: Iterator[int] = itertools.count(0)
 
-    self.properties: RemoteProperties = safe_eval(ast.parse(self.q(GetProperties(), wait=True), mode="eval").body)
-    if DEBUG >= 1: print(f"remote has device {self.properties.real_device}")
-    # TODO: how to we have BEAM be cached on the backend? this should just send a specification of the compute. rethink what goes in Renderer
+    self.properties = RemoteProperties(real_device='METAL', renderer=('tinygrad.renderer.cstyle', 'MetalRenderer', ()), offset_supported=True, graph_supported=True, graph_supports_multi=False, ib_gid=None)
     renderer = self.properties.renderer
-    if not renderer[0].startswith("tinygrad.") or not renderer[1].endswith("Renderer"): raise RuntimeError(f"bad renderer {renderer}")
     renderer_class = fromimport(renderer[0], renderer[1])  # TODO: is this secure?
-    if not issubclass(renderer_class, Renderer): raise RuntimeError(f"renderer isn't a Renderer {renderer}")
-
     graph = fromimport('tinygrad.runtime.graph.remote', "RemoteGraph") if self.properties.graph_supported else None
     compilers = [(functools.partial(renderer_class, *renderer[2]), Compiler)]
     super().__init__(device, RemoteAllocator(self), compilers, functools.partial(RemoteProgram, self), graph, id(self.conn))

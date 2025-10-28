@@ -363,12 +363,8 @@ class RemoteAllocator(Allocator['RemoteDevice']):
     numbers_size = size // itemsize
     self.dev.buffer_num += numbers_size
     return self.dev.buffer_num - numbers_size
-  # TODO: options should not be here in any Allocator
-  def _free(self, opaque:int, options):
-    try: self.dev.q(BufferFree(opaque))
-    except (TypeError, AttributeError): pass
+  def _free(self, opaque:int, options): return
   def _copyin(self, dest:int, src:memoryview, dtype:dtypes):
-    self.dev.q(CopyIn(dest, self.dev.conn.req.h(src)))
     chunks = [bytes(src)[i:i+4] for i in range(0, len(bytes(src)), dtype.itemsize)]
     if dtype == dtypes.uint:
       for i in range(len(chunks)): chunks[i] = int.from_bytes(chunks[i], byteorder='little', signed=False)
@@ -429,24 +425,8 @@ class RemoteAllocator(Allocator['RemoteDevice']):
     result = [float(x) for x in result]
     byte_data_32 = b''.join(struct.pack('f', x) for x in result)
     dest[:] = byte_data_32
-    return
-
-    resp = self.dev.q(CopyOut(src), wait=True)
-    assert len(resp) == len(dest), f"buffer length mismatch {len(resp)} != {len(dest)}"
-    dest[:] = resp
-  def _transfer(self, dest, src, sz, src_dev, dest_dev):
-    if dest_dev.conn != src_dev.conn:
-      dest_dev.q(Event(src_dev.session, start_event:=next(src_dev.event_num)))
-      src_dev.q(Wait(start_event))
-    src_dev.q(Transfer(src, dest_dev.session, dest))
-    if dest_dev.conn != src_dev.conn:
-      src_dev.q(Event(dest_dev.session, end_event:=next(dest_dev.event_num)))
-      dest_dev.q(Wait(end_event))
-    if DEBUG >= 2: dest_dev.conn.batch_submit()
-  def _dyn_offset(self, opaque:int, size:int, offset:int) -> int:
-    self.dev.q(BufferOffset(buffer_num:=next(self.dev.buffer_num), size, offset, opaque))
-    return buffer_num
-  
+  def _transfer(self, dest, src, sz, src_dev, dest_dev): return
+  def _dyn_offset(self, opaque:int, size:int, offset:int) -> int: return
   def copyin_numbers(self, x, cell):
     cell = get_cell(cell)
     self.numbes_lines.append(f'set value of cell "{cell}" to {x}')

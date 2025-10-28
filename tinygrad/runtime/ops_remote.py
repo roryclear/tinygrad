@@ -284,10 +284,7 @@ class RemoteProgram:
   def __init__(self, dev:RemoteDevice, name:str, lib:bytes):
     self.dev, self.name = dev, name
     self.lib = lib
-    self.datahash = self.dev.conn.req.h(lib)
-    self.dev.q(ProgramAlloc(self.name, self.datahash))
     super().__init__()
-    weakref.finalize(self, self._fini, self.dev, self.name, self.datahash)
 
   @staticmethod
   def _fini(dev:RemoteDevice, name:str, datahash:str): dev.q(ProgramFree(name, datahash))
@@ -342,8 +339,7 @@ class RemoteProgram:
     end tell"""
     print(script)
     subprocess.run(['osascript', '-e', script], capture_output=True, text=True)
-    ret = self.dev.q(ProgramExec(self.name, self.datahash, bufs, vals, global_size, local_size, wait), wait=wait)
-    if wait: return float(ret)
+    return None
 
 @functools.cache
 class RemoteConnection:

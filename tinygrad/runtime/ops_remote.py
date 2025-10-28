@@ -431,7 +431,7 @@ def get_cell(n, max_cols=1000):  # max_cols is how many columns per row
     row = row_index + 1
     return f"{col}{row}"
 
-def get_temp_cell(n, max_cols=1000): return get_cell(1_000 - n) # todo 1 billion
+def get_temp_cell(n, max_cols=1000): return get_cell(1_000_000 - n) # todo 1 billion
 
 
 class RemoteProgram:

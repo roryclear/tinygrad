@@ -24,8 +24,6 @@ ROWS = 1000
 class SheetAllocator(Allocator['SheetDevice']):
   def __init__(self, dev:SheetDevice):
     self.numbes_lines = []
-    self.numbes_lines_csv = []
-    Path("tiny.csv").touch()
     file = Path(__file__).parent / "tiny.numbers"
     script = f'''
     tell application "Numbers"
@@ -60,9 +58,10 @@ class SheetAllocator(Allocator['SheetDevice']):
     elif dtype == dtypes.int64:
       for i in range(len(chunks)): chunks[i] = struct.unpack('<q', chunks[i])[0]
     else:
-      print("rory dtype =",dtype)
+      print("dtype not supported")
+      exit()
     for i in range(len(chunks)): self.copyin_numbers(chunks[i], (dest+i))
-    inner = "\n                    ".join(self.numbes_lines)
+    script = "\n                    ".join(self.numbes_lines)
 
     self.script = f"""
     tell application "Numbers"
@@ -70,15 +69,13 @@ class SheetAllocator(Allocator['SheetDevice']):
         tell document 1
             tell sheet 1
                 tell table 1
-                        {inner}
+                        {script}
                 end tell
             end tell
         end tell
     end tell
     """
-    print(self.script)
     subprocess.run(['osascript', '-e', self.script], capture_output=True, text=True)
-    print("DONE")
   def _copyout(self, dest:memoryview, src:int, dtype:dtypes):
     ncells = int(len(dest) // dtype.itemsize)
     cells = []
@@ -105,8 +102,6 @@ class SheetAllocator(Allocator['SheetDevice']):
         end tell
     end tell
     '''
-    print("AppleScript:")
-    print(self.script)
     result = subprocess.run(['osascript', '-e', self.script], capture_output=True, text=True)
     result = result.stdout.replace(" ","").replace("\n","").split(",")
     result = [float(x) for x in result]
@@ -115,7 +110,6 @@ class SheetAllocator(Allocator['SheetDevice']):
   def _transfer(self, dest, src, sz, src_dev, dest_dev): return
   def _dyn_offset(self, opaque:int, size:int, offset:int) -> int: return
   def copyin_numbers(self, x, cell):
-    self.numbes_lines_csv.append([cell, x])
     cell = get_cell(cell)
     if type(x) == float: x = round(x, 8)
     self.numbes_lines.append(f'set value of cell "{cell}" to {x}')
@@ -144,7 +138,6 @@ class SheetProgram:
     self.lib = lib
     super().__init__()
   def __call__(self, *bufs, global_size=None, local_size=None, vals:tuple[int, ...]=(), wait=False):
-    print("sheet call")
     cell_bufs = list(bufs)
     script = self.lib.decode('utf-8')
     script = re.sub(r'\b\w+\s+(\w+)\s*=', r'set \1 to', script) # assign
@@ -202,9 +195,7 @@ class SheetProgram:
         end tell
     end tell
     """
-    print(script)
     subprocess.run(['osascript', '-e', script], capture_output=False, text=True)
-    print("DONE")
 
 class SheetDevice(Compiled):
   def __init__(self, device:str):

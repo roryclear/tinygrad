@@ -157,8 +157,22 @@ class SheetProgram:
     script = re.sub(r'\bval(\d+)\b', replace_val, script)
     self.dev.buffer_num += len(cell_bufs) - 1
 
-    script = re.sub(r'set\s+([A-Z]+\d+)\s+to\s+value of cell\s+"([A-Z]+\d+)"', r'set value of cell "\1" to value of cell "\2"', script)
-    script = re.sub(r'set value of cell "([A-Z]+\d+)" to \(([^)]+)\)', lambda m: f'set value of cell "{m.group(1)}" to "={m.group(2)}"', script)
+    script = re.sub(r'set\s+([A-Z]+\d+)\s+to\s+value of cell\s+"([A-Z]+\d+)"', r'set value of cell "\1" to value of cell \2', script)
+    script = re.sub(r'value of cell ([A-Z]+\d+)', r'value of cell "\1"', script)
+
+    def wrap_complex_expressions(match):
+        assignment = match.group(0)
+        if re.search(r'[+*\-/()]', assignment) and not re.search(r'to value of cell "[A-Z]+\d+"$', assignment):
+            cell_match = re.search(r'set value of cell "([A-Z]+\d+)" to (.*)', assignment)
+            if cell_match:
+                cell = cell_match.group(1)
+                expr = cell_match.group(2)
+                if not re.match(r'value of cell "[A-Z]+\d+"$', expr.strip()):
+                    return f'set value of cell "{cell}" to "={expr}"'
+        return assignment
+
+    script = re.sub(r'set value of cell "[A-Z]+\d+" to .*', wrap_complex_expressions, script)
+
 
     def add_static_freeze(match):
       cell = match.group(1)
@@ -166,12 +180,6 @@ class SheetProgram:
       freeze_line = f'set value of cell "{cell}" to value of cell "{cell}"'
       return assignment + "\n" + freeze_line
     script = re.sub(r'set value of cell "([A-Z]+\d+)" to [^\n]+', add_static_freeze, script)
-    script = re.sub(
-        r'(set value of cell "[A-Z]+1" to "=\([^"]*)"(\+.*?)(?=\s*set value of cell "[A-Z]+1" to value of cell)',
-        r'\1\2"',
-        script,
-        flags=re.DOTALL
-    )
     script = f"""tell application "Numbers"
         activate
         tell document 1

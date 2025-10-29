@@ -16,6 +16,9 @@ import subprocess
 from pathlib import Path
 import re
 
+COLS = 100
+ROWS = 1000
+
 # ***** frontend *****
 
 class SheetAllocator(Allocator['SheetDevice']):
@@ -31,8 +34,8 @@ class SheetAllocator(Allocator['SheetDevice']):
         tell newDoc
             tell sheet 1
                 tell table 1
-                    set column count to 1000
-                    set row count to 1000000
+                    set column count to {COLS}
+                    set row count to {ROWS}
                 end tell
             end tell
         end tell
@@ -47,15 +50,20 @@ class SheetAllocator(Allocator['SheetDevice']):
     return self.dev.buffer_num - numbers_size
   def _free(self, opaque:int, options): return
   def _copyin(self, dest:int, src:memoryview, dtype:dtypes):
-    chunks = [bytes(src)[i:i+4] for i in range(0, len(bytes(src)), dtype.itemsize)]
+    chunks = [bytes(src)[i:i+dtype.itemsize] for i in range(0, len(bytes(src)), dtype.itemsize)]
     if dtype == dtypes.uint:
       for i in range(len(chunks)): chunks[i] = int.from_bytes(chunks[i], byteorder='little', signed=False)
-    if dtype == dtypes.int:
+    elif dtype == dtypes.int:
       for i in range(len(chunks)): chunks[i] = int.from_bytes(chunks[i], byteorder='little', signed=True)
-    if dtype == dtypes.float:
+    elif dtype == dtypes.float:
       for i in range(len(chunks)): chunks[i] = struct.unpack('<f', chunks[i])[0]
+    elif dtype == dtypes.int64:
+      for i in range(len(chunks)): chunks[i] = struct.unpack('<q', chunks[i])[0]
+    else:
+      print("rory dtype =",dtype)
     for i in range(len(chunks)): self.copyin_numbers(chunks[i], (dest+i))
     inner = "\n                    ".join(self.numbes_lines)
+
     self.script = f"""
     tell application "Numbers"
         activate
@@ -70,6 +78,7 @@ class SheetAllocator(Allocator['SheetDevice']):
     """
     print(self.script)
     subprocess.run(['osascript', '-e', self.script], capture_output=True, text=True)
+    print("DONE")
   def _copyout(self, dest:memoryview, src:int, dtype:dtypes):
     ncells = int(len(dest) // dtype.itemsize)
     cells = []
@@ -108,9 +117,10 @@ class SheetAllocator(Allocator['SheetDevice']):
   def copyin_numbers(self, x, cell):
     self.numbes_lines_csv.append([cell, x])
     cell = get_cell(cell)
+    if type(x) == float: x = round(x, 8)
     self.numbes_lines.append(f'set value of cell "{cell}" to {x}')
 
-def get_cell(n, max_cols=1000):  # max_cols is how many columns per row
+def get_cell(n, max_cols=COLS):  # max_cols is how many columns per row
     def number_to_column(num):
         column = ""
         num = num + 1
@@ -125,7 +135,7 @@ def get_cell(n, max_cols=1000):  # max_cols is how many columns per row
     row = row_index + 1
     return f"{col}{row}"
 
-def get_temp_cell(n, max_cols=1000): return get_cell(999_999_999 - n)
+def get_temp_cell(n): return get_cell((COLS*ROWS) - 1 - n)
 
 
 class SheetProgram:
@@ -134,6 +144,7 @@ class SheetProgram:
     self.lib = lib
     super().__init__()
   def __call__(self, *bufs, global_size=None, local_size=None, vals:tuple[int, ...]=(), wait=False):
+    print("sheet call")
     cell_bufs = list(bufs)
     script = self.lib.decode('utf-8')
     script = re.sub(r'\b\w+\s+(\w+)\s*=', r'set \1 to', script) # assign
@@ -159,7 +170,6 @@ class SheetProgram:
 
     script = re.sub(r'set\s+([A-Z]+\d+)\s+to\s+value of cell\s+"([A-Z]+\d+)"', r'set value of cell "\1" to value of cell \2', script)
     script = re.sub(r'value of cell ([A-Z]+\d+)', r'value of cell "\1"', script)
-
     def wrap_complex_expressions(match):
         assignment = match.group(0)
         if re.search(r'[+*\-/()]', assignment) and not re.search(r'to value of cell "[A-Z]+\d+"$', assignment):
@@ -172,6 +182,7 @@ class SheetProgram:
         return assignment
 
     script = re.sub(r'set value of cell "[A-Z]+\d+" to .*', wrap_complex_expressions, script)
+    script = re.sub(r'(?<=\d)f\b', '', script)
 
 
     def add_static_freeze(match):
@@ -189,10 +200,11 @@ class SheetProgram:
                 end tell
             end tell
         end tell
-    end tell"""
+    end tell
+    """
     print(script)
-    subprocess.run(['osascript', '-e', script], capture_output=True, text=True)
-    return None
+    subprocess.run(['osascript', '-e', script], capture_output=False, text=True)
+    print("DONE")
 
 class SheetDevice(Compiled):
   def __init__(self, device:str):

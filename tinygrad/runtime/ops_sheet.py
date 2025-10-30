@@ -194,7 +194,13 @@ class SheetProgram:
         end tell
     end tell
     """
+
     script = re.sub(r'set value of cell "([A-Z]\d+)" to ([A-Z]\d+)(?!")', r'set value of cell "\1" to value of cell "\2"', script)
+
+    # remove bracket for split?
+    script = script.replace("=(","=")
+    script = script.replace("))",")")
+
     subprocess.run(['osascript', '-e', script], capture_output=False, text=True)
 
 class SheetDevice(Compiled):

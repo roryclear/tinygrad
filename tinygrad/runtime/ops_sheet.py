@@ -62,7 +62,6 @@ class SheetAllocator(Allocator['SheetDevice']):
       exit()
     for i in range(len(chunks)): self.copyin_numbers(chunks[i], (dest+i))
     script = "\n                    ".join(self.numbes_lines)
-
     self.script = f"""
     tell application "Numbers"
         activate
@@ -195,6 +194,7 @@ class SheetProgram:
         end tell
     end tell
     """
+    script = re.sub(r'set value of cell "([A-Z]\d+)" to ([A-Z]\d+)(?!")', r'set value of cell "\1" to value of cell "\2"', script)
     subprocess.run(['osascript', '-e', script], capture_output=False, text=True)
 
 class SheetDevice(Compiled):

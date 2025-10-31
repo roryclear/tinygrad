@@ -17,7 +17,7 @@ from pathlib import Path
 import re
 
 COLS = 100
-ROWS = 1000
+ROWS = 10000
 
 # ***** frontend *****
 
@@ -62,20 +62,39 @@ class SheetAllocator(Allocator['SheetDevice']):
       exit()
     for i in range(len(chunks)): self.copyin_numbers(chunks[i], (dest+i))
     script = "\n                    ".join(self.numbes_lines)
-    self.script = f"""
-    tell application "Numbers"
-        activate
-        tell document 1
-            tell sheet 1
-                tell table 1
-                        {script}
+    # todo same as exec
+    batch_size = 100_000
+    script_lines = script.strip().split('\n')
+
+    batches = []
+    current_batch = []
+    current_length = 0
+
+    for line in script_lines:
+        line_length = len(line) + 1
+        if current_length + line_length > batch_size and current_batch:
+            batches.append('\n'.join(current_batch))
+            current_batch = [line]
+            current_length = line_length
+        else:
+            current_batch.append(line)
+            current_length += line_length
+
+    if current_batch: batches.append('\n'.join(current_batch))
+    for i, batch_script in enumerate(batches, start=1):
+        full_script = f"""tell application "Numbers"
+            activate
+            tell document 1
+                tell sheet 1
+                    tell table 1
+                        {batch_script}
+                    end tell
                 end tell
             end tell
-        end tell
-    end tell
-    """
-    #print(self.script)
-    subprocess.run(['osascript', '-e', self.script], capture_output=True, text=True)
+        end tell"""
+        print(full_script)
+        subprocess.run(['osascript', '-e', full_script], capture_output=False, text=True)
+
   def _copyout(self, dest:memoryview, src:int, dtype:dtypes):
     ncells = int(len(dest) // dtype.itemsize)
     cells = []

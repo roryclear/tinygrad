@@ -101,6 +101,7 @@ class SheetAllocator(Allocator['SheetDevice']):
         end tell
     end tell
     '''
+    #print(self.script)
     result = subprocess.run(['osascript', '-e', self.script], capture_output=True, text=True)
     result = result.stdout.replace(" ","").replace("\n","").split(",")
     result = [float(x) for x in result]
@@ -135,54 +136,64 @@ class SheetProgram:
   def __init__(self, dev:SheetDevice, name:str, lib:bytes):
     self.dev, self.name = dev, name
     self.lib = lib
+    self.alu_num = 0
     super().__init__()
   def __call__(self, *bufs, global_size=None, local_size=None, vals:tuple[int, ...]=(), wait=False):
     cell_bufs = list(bufs)
+
+    # remove metal stuff
     script = self.lib.decode('utf-8')
-    script = re.sub(r'\b\w+\s+(\w+)\s*=', r'set \1 to', script) # assign
-    script = re.sub(r'\*\(([^)]+)\)\s*=', r'set *(\1) to', script) #pointer assign
-    script = script.replace("}","")
-    script = script.replace(";","")
     script = script[script.index("{")+1:]
-    def replace_data_expr(match):
+    script = script[:script.index("}")]
+    script = script.replace(";","")
+
+    # pointer -> cell
+    pattern = re.compile(r'\*\(data(\d+)_(\d+)\+(\d+)\)')
+    def replacer(match):
         a = int(match.group(1))
-        c = int(match.group(2))
-        base_cell = cell_bufs[a]
-        final_cell = get_cell(base_cell + c)
-        return final_cell
-    script = re.sub(r"data(\d+)_[0-9]+\+(\d+)", replace_data_expr, script)
-    script = re.sub(r'\(\*\(([A-Z]+[0-9]+)\)\)', r'value of cell "\1"', script)
-    script = re.sub(r'set \*\(([A-Z]+[0-9]+)\) to', r'set value of cell "\1" to', script)
-    def replace_val(match):
+        b = int(match.group(2))  # not used, but available
+        c = int(match.group(3))
+        result = get_cell(cell_bufs[a] + c)
+        return result
+    script = pattern.sub(replacer, script)
+
+    # val -> cell
+    pattern = re.compile(r'\bval(\d+)\b')
+    def replacer(match):
       n = int(match.group(1))
-      cell = get_cell(self.dev.buffer_num+1+n)
-      return f'{cell}' # todo add back the quotes ?
-    script = re.sub(r'\bval(\d+)\b', replace_val, script)
-    self.dev.buffer_num += len(cell_bufs) - 1
+      self.alu_num = max(n, self.alu_num)
+      return get_cell(self.dev.buffer_num+1+n)
+    script = pattern.sub(replacer, script)
+    # alu -> cell # todo, this doesn't work properly?
+    pattern = re.compile(r'\balu(\d+)\b')
+    def replacer(match):
+      n = int(match.group(1))
+      self.alu_num = max(n, self.alu_num)
+      return get_cell(self.dev.buffer_num+self.alu_num+1+n)
+    script = pattern.sub(replacer, script)
 
-    script = re.sub(r'set\s+([A-Z]+\d+)\s+to\s+value of cell\s+"([A-Z]+\d+)"', r'set value of cell "\1" to value of cell \2', script)
-    script = re.sub(r'value of cell ([A-Z]+\d+)', r'value of cell "\1"', script)
-    def wrap_complex_expressions(match):
-        assignment = match.group(0)
-        if re.search(r'[+*\-/()]', assignment) and not re.search(r'to value of cell "[A-Z]+\d+"$', assignment):
-            cell_match = re.search(r'set value of cell "([A-Z]+\d+)" to (.*)', assignment)
-            if cell_match:
-                cell = cell_match.group(1)
-                expr = cell_match.group(2)
-                if not re.match(r'value of cell "[A-Z]+\d+"$', expr.strip()):
-                    return f'set value of cell "{cell}" to "={expr}"'
-        return assignment
+    # remove datatype
+    script = re.sub(r'^\s*\w+\s+(?=\w+\s*=)', '', script, flags=re.MULTILINE)
+    script = re.sub(r'^\s+', '', script, flags=re.MULTILINE)
 
-    script = re.sub(r'set value of cell "[A-Z]+\d+" to .*', wrap_complex_expressions, script)
-    script = re.sub(r'(?<=\d)f\b', '', script)
+    # XXN = -> "set value of cell "XXN" to "
+    script = re.sub(r'^([A-Z]+\d+)\s*=\s*', r'set value of cell "\1" to ', script, flags=re.MULTILINE)
 
+    # to XXN -> "to value of "XXN""
+    script = re.sub(r'(set value of cell "[^"]+" to )([A-Z]+\d+)', r'\1value of cell "\2"', script)
 
-    def add_static_freeze(match):
-      cell = match.group(1)
-      assignment = match.group(0)
-      freeze_line = f'set value of cell "{cell}" to value of cell "{cell}"'
-      return assignment + "\n" + freeze_line
-    script = re.sub(r'set value of cell "([A-Z]+\d+)" to [^\n]+', add_static_freeze, script)
+    # to (XXN*XYN) -> to "=(XXN*XYN)"
+    pattern = r'(set value of cell "[^"]+" to )\((.*)\)'
+    replacement = r'\1"=(\2)"'
+
+    script = re.sub(pattern, replacement, script)
+
+    # remove formula after each set
+    script = re.sub(r'(set value of cell "([^"]+)" to [^\n]+)', r'\1\nset value of cell "\2" to value of cell "\2"', script)
+
+    # remove f for floats
+    script = re.sub(r'(\d+)f', r'\1', script)
+
     script = f"""tell application "Numbers"
         activate
         tell document 1
@@ -194,7 +205,7 @@ class SheetProgram:
         end tell
     end tell
     """
-    script = re.sub(r'set value of cell "([A-Z]\d+)" to ([A-Z]\d+)(?!")', r'set value of cell "\1" to value of cell "\2"', script)
+    print(script)
     subprocess.run(['osascript', '-e', script], capture_output=False, text=True)
 
 class SheetDevice(Compiled):
@@ -203,3 +214,4 @@ class SheetDevice(Compiled):
     from tinygrad.renderer.cstyle import SheetRenderer
     super().__init__(device, SheetAllocator(self), [(SheetRenderer, Compiler)], functools.partial(SheetProgram, self))
     self.renderer.device = device
+

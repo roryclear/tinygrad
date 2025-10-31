@@ -74,6 +74,7 @@ class SheetAllocator(Allocator['SheetDevice']):
         end tell
     end tell
     """
+    #print(self.script)
     subprocess.run(['osascript', '-e', self.script], capture_output=True, text=True)
   def _copyout(self, dest:memoryview, src:int, dtype:dtypes):
     ncells = int(len(dest) // dtype.itemsize)
@@ -161,7 +162,7 @@ class SheetProgram:
     pattern = re.compile(r'\bval(\d+)\b')
     def replacer(match):
       n = int(match.group(1))
-      self.alu_num = max(n, self.alu_num)
+      self.alu_num = max(n, self.alu_num) + 1
       return get_cell(self.dev.buffer_num+1+n)
     script = pattern.sub(replacer, script)
     # alu -> cell # todo, this doesn't work properly?
@@ -205,7 +206,7 @@ class SheetProgram:
         end tell
     end tell
     """
-    print(script)
+    #print(script)
     subprocess.run(['osascript', '-e', script], capture_output=False, text=True)
 
 class SheetDevice(Compiled):

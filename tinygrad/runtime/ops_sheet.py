@@ -102,7 +102,7 @@ class SheetAllocator(Allocator['SheetDevice']):
         end tell
     end tell
     '''
-    #print(self.script)
+    print(self.script)
     result = subprocess.run(['osascript', '-e', self.script], capture_output=True, text=True)
     result = result.stdout.replace(" ","").replace("\n","").split(",")
     result = [float(x) for x in result]
@@ -195,6 +195,27 @@ class SheetProgram:
     # remove f for floats
     script = re.sub(r'(\d+)f', r'\1', script)
 
+
+    script_lines = script.strip().split('\n')
+    batch_size = 10_000
+    for i in range(0, len(script_lines), batch_size):
+      batch = script_lines[i:i + batch_size]
+      batch_script = "\n                    ".join(batch)
+  
+      full_script = f"""tell application "Numbers"
+          activate
+          tell document 1
+              tell sheet 1
+                  tell table 1
+                      {batch_script}
+                  end tell
+              end tell
+          end tell
+      end tell"""
+      
+      print(f"Running batch {i//batch_size + 1} ({len(batch)} commands)")
+      subprocess.run(['osascript', '-e', full_script], capture_output=False, text=True)
+    return
     script = f"""tell application "Numbers"
         activate
         tell document 1
@@ -206,7 +227,7 @@ class SheetProgram:
         end tell
     end tell
     """
-    #print(script)
+    print(script)
     subprocess.run(['osascript', '-e', script], capture_output=False, text=True)
 
 class SheetDevice(Compiled):

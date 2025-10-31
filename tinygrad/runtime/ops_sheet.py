@@ -195,25 +195,37 @@ class SheetProgram:
     # remove f for floats
     script = re.sub(r'(\d+)f', r'\1', script)
 
+    batch_size = 100_000
     script_lines = script.strip().split('\n')
-    batch_size = 10_000 # should be max chars?
-    for i in range(0, len(script_lines), batch_size):
-      batch = script_lines[i:i + batch_size]
-      batch_script = "\n                    ".join(batch)
-  
-      full_script = f"""tell application "Numbers"
-          activate
-          tell document 1
-              tell sheet 1
-                  tell table 1
-                      {batch_script}
-                  end tell
-              end tell
-          end tell
-      end tell"""
-      print(full_script)
-      print(f"Running batch {i//batch_size + 1} ({len(batch)} commands)")
-      subprocess.run(['osascript', '-e', full_script], capture_output=False, text=True)
+
+    batches = []
+    current_batch = []
+    current_length = 0
+
+    for line in script_lines:
+        line_length = len(line) + 1
+        if current_length + line_length > batch_size and current_batch:
+            batches.append('\n'.join(current_batch))
+            current_batch = [line]
+            current_length = line_length
+        else:
+            current_batch.append(line)
+            current_length += line_length
+
+    if current_batch: batches.append('\n'.join(current_batch))
+    for i, batch_script in enumerate(batches, start=1):
+        full_script = f"""tell application "Numbers"
+            activate
+            tell document 1
+                tell sheet 1
+                    tell table 1
+                        {batch_script}
+                    end tell
+                end tell
+            end tell
+        end tell"""
+        print(full_script)
+        subprocess.run(['osascript', '-e', full_script], capture_output=False, text=True)
       
 class SheetDevice(Compiled):
   def __init__(self, device:str):

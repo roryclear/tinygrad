@@ -51,6 +51,8 @@ class SheetAllocator(Allocator['SheetDevice']):
     chunks = [bytes(src)[i:i+dtype.itemsize] for i in range(0, len(bytes(src)), dtype.itemsize)]
     if dtype == dtypes.uint:
       for i in range(len(chunks)): chunks[i] = int.from_bytes(chunks[i], byteorder='little', signed=False)
+    if dtype == dtypes.uint8:
+      for i in range(len(chunks)): chunks[i] = chunks[i][0]
     elif dtype == dtypes.int:
       for i in range(len(chunks)): chunks[i] = int.from_bytes(chunks[i], byteorder='little', signed=True)
     elif dtype == dtypes.float:

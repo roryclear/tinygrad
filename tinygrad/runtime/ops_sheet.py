@@ -57,8 +57,11 @@ class SheetAllocator(Allocator['SheetDevice']):
       for i in range(len(chunks)): chunks[i] = struct.unpack('<f', chunks[i])[0]
     elif dtype == dtypes.int64:
       for i in range(len(chunks)): chunks[i] = struct.unpack('<q', chunks[i])[0]
+    elif dtype == dtypes.float64:
+      for i in range(len(chunks)): chunks[i] = struct.unpack('<d', chunks[i])[0]
+       
     else:
-      print("dtype not supported")
+      print("dtype not supported:",dtype)
       exit()
     for i in range(len(chunks)): self.copyin_numbers(chunks[i], (dest+i))
     script = "\n                    ".join(self.numbes_lines)

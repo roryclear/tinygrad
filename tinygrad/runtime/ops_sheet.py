@@ -16,7 +16,7 @@ import subprocess
 from pathlib import Path
 import re
 
-COLS = 100
+COLS = 28
 ROWS = 10000
 
 # ***** frontend *****
@@ -198,6 +198,8 @@ class SheetProgram:
     script = pattern.sub(replacer, script)
 
     # remove datatype
+    script = re.sub(r'^\s*unsigned\s+int\s+(?=\w+\s*=)', '', script, flags=re.MULTILINE)
+    script = re.sub(r'^\s*unsigned\s+char\s+(?=\w+\s*=)', '', script, flags=re.MULTILINE)
     script = re.sub(r'^\s*\w+\s+(?=\w+\s*=)', '', script, flags=re.MULTILINE)
     script = re.sub(r'^\s+', '', script, flags=re.MULTILINE)
 

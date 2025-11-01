@@ -97,7 +97,7 @@ class SheetAllocator(Allocator['SheetDevice']):
                 end tell
             end tell
         end tell"""
-        print(full_script)
+        #print(full_script)
         subprocess.run(['osascript', '-e', full_script], capture_output=False, text=True)
 
   def _copyout(self, dest:memoryview, src:int, dtype:dtypes):
@@ -126,7 +126,7 @@ class SheetAllocator(Allocator['SheetDevice']):
         end tell
     end tell
     '''
-    print(self.script)
+    #self.script)
     result = subprocess.run(['osascript', '-e', self.script], capture_output=True, text=True)
     result = result.stdout.replace(" ","").replace("\n","").split(",")
     result = [float(x) for x in result]
@@ -235,6 +235,9 @@ class SheetProgram:
 
     # 1e8 -> (1*10^8)
     script = re.sub(r'(-?\d*\.?\d+)e(-?\d+)', r'(\1*10^(\2))', script)
+
+    # ((T2<T1)?T1:T2)
+    script = re.sub(r'\(\(([^?]+)<([^?]+)\)\?([^:]+):([^)]+)\)', r'IF(\1<\2, \3, \4)', script)
 
     batch_size = 100_000
     script_lines = script.strip().split('\n')

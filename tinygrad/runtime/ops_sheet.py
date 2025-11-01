@@ -221,6 +221,15 @@ class SheetProgram:
     # remove f for floats
     script = re.sub(r'(\d+)f', r'\1', script)
 
+
+    # remove casts
+    pattern = re.compile(r'^\s*(\w+)\s*=\s*\(\(float\)\((\w+)\)\)\s*$', flags=re.MULTILINE)
+    aliases = {}
+    for alias, original in re.findall(pattern, script):
+        aliases[alias] = original
+    script = re.sub(pattern, '', script)
+    for alias, original in aliases.items(): script = re.sub(rf'\b{re.escape(alias)}\b', original, script)
+
     batch_size = 100_000
     script_lines = script.strip().split('\n')
 

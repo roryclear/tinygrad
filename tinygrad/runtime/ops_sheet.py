@@ -233,6 +233,9 @@ class SheetProgram:
     # EXP2 -> 2^
     script = script.replace("exp2", "2^")
 
+    # 1e8 -> (1*10^8)
+    script = re.sub(r'(-?\d*\.?\d+)e(-?\d+)', r'(\1*10^(\2))', script)
+
     batch_size = 100_000
     script_lines = script.strip().split('\n')
 

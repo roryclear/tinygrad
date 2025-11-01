@@ -230,6 +230,9 @@ class SheetProgram:
     script = re.sub(pattern, '', script)
     for alias, original in aliases.items(): script = re.sub(rf'\b{re.escape(alias)}\b', original, script)
 
+    # EXP2 -> 2^
+    script = script.replace("exp2", "2^")
+
     batch_size = 100_000
     script_lines = script.strip().split('\n')
 

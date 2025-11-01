@@ -223,7 +223,7 @@ class SheetProgram:
 
 
     # remove casts
-    pattern = re.compile(r'^\s*(\w+)\s*=\s*\(\(float\)\((\w+)\)\)\s*$', flags=re.MULTILINE)
+    pattern = re.compile(r'^\s*(\w+)\s*=\s*\(\(float\)\((\w+)\)\)\s*\n?', flags=re.MULTILINE)
     aliases = {}
     for alias, original in re.findall(pattern, script):
         aliases[alias] = original

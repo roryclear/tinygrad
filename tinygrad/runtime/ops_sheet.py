@@ -225,7 +225,7 @@ class SheetProgram:
     script = re.sub(r'(set value of cell "[^"]+" to )([^"\n]+[+*^/-][^"\n]*)$', r'\1"=\2"', script, flags=re.MULTILINE)
 
     # log2(N) to LOG(N, 2)
-    script = re.compile(r'(?i)\blog2\s*\(\s*([^)]+?)\s*\)').sub(lambda m: f"LOG({m.group(1).strip()}, 2)", script)
+    script = re.sub(r'(?i)\blog2\s*\(([^()]*?(?:\([^()]*\)[^()]*)*)\)', r'LOG(\1, 2)', script)
 
     # remove formula after each set
     script = re.sub(r'(set value of cell "([^"]+)" to [^\n]+)', r'\1\nset value of cell "\2" to value of cell "\2"', script)
@@ -233,6 +233,8 @@ class SheetProgram:
     # remove f for floats
     script = re.sub(r'(\d+)f', r'\1', script)
 
+    # caps sqrt
+    script = script.replace("sqrt","SQRT")
 
     # remove casts
     pattern = re.compile(r'^\s*(\w+)\s*=\s*\(\(float\)\((\w+)\)\)\s*\n?', flags=re.MULTILINE)

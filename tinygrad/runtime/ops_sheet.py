@@ -126,7 +126,7 @@ class SheetAllocator(Allocator['SheetDevice']):
         end tell
     end tell
     '''
-    #self.script)
+    print(self.script)
     result = subprocess.run(['osascript', '-e', self.script], capture_output=True, text=True)
     result = result.stdout.replace(" ","").replace("\n","").split(",")
     result = [float(x) for x in result]
@@ -203,6 +203,12 @@ class SheetProgram:
     script = re.sub(r'^\s*\w+\s+(?=\w+\s*=)', '', script, flags=re.MULTILINE)
     script = re.sub(r'^\s+', '', script, flags=re.MULTILINE)
 
+    # EXP2 -> 2^
+    script = script.replace("exp2", "2^")
+
+    # N^X to (N^X)
+    script = re.sub(r'(N\^[A-Z]+\d+)', r'(\1)', script)
+
     # XXN = -> "set value of cell "XXN" to "
     script = re.sub(r'^([A-Z]+\d+)\s*=\s*', r'set value of cell "\1" to ', script, flags=re.MULTILINE)
 
@@ -212,8 +218,10 @@ class SheetProgram:
     # to (XXN*XYN) -> to "=(XXN*XYN)"
     pattern = r'(set value of cell "[^"]+" to )\((.*)\)'
     replacement = r'\1"=(\2)"'
-
     script = re.sub(pattern, replacement, script)
+    
+    # to 2^() to "=2^()"
+    script = re.sub(r'(set value of cell "[^"]+" to )((?!"=)[^"]*[+*^/-][^"]*)$', r'\1"=\2"', script, flags=re.MULTILINE)
 
     # remove formula after each set
     script = re.sub(r'(set value of cell "([^"]+)" to [^\n]+)', r'\1\nset value of cell "\2" to value of cell "\2"', script)
@@ -229,9 +237,6 @@ class SheetProgram:
         aliases[alias] = original
     script = re.sub(pattern, '', script)
     for alias, original in aliases.items(): script = re.sub(rf'\b{re.escape(alias)}\b', original, script)
-
-    # EXP2 -> 2^
-    script = script.replace("exp2", "2^")
 
     # 1e8 -> (1*10^8)
     script = re.sub(r'(-?\d*\.?\d+)e(-?\d+)', r'(\1*10^(\2))', script)
@@ -277,4 +282,5 @@ class SheetDevice(Compiled):
     from tinygrad.renderer.cstyle import SheetRenderer
     super().__init__(device, SheetAllocator(self), [(SheetRenderer, Compiler)], functools.partial(SheetProgram, self))
     self.renderer.device = device
+
 

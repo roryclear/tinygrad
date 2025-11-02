@@ -221,7 +221,8 @@ class SheetProgram:
     script = re.sub(pattern, replacement, script)
     
     # to 2^() to "=2^()"
-    script = re.sub(r'(set value of cell "[^"]+" to )((?!"=)[^"]*[+*^/-][^"]*)$', r'\1"=\2"', script, flags=re.MULTILINE)
+    script = re.sub(r'(set value of cell "[^"]+" to )(\d+)\^\(([^)]+)\)$', r'\1"=\2^(\3)"', script, flags=re.MULTILINE)
+    script = re.sub(r'(set value of cell "[^"]+" to )([^"\n]+[+*^/-][^"\n]*)$', r'\1"=\2"', script, flags=re.MULTILINE)
 
     # log2(N) to LOG(N, 2)
     script = re.compile(r'(?i)\blog2\s*\(\s*([^)]+?)\s*\)').sub(lambda m: f"LOG({m.group(1).strip()}, 2)", script)

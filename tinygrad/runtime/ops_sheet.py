@@ -97,7 +97,7 @@ class SheetAllocator(Allocator['SheetDevice']):
                 end tell
             end tell
         end tell"""
-        #print(full_script)
+        print(full_script)
         subprocess.run(['osascript', '-e', full_script], capture_output=False, text=True)
 
   def _copyout(self, dest:memoryview, src:int, dtype:dtypes):
@@ -222,6 +222,9 @@ class SheetProgram:
     
     # to 2^() to "=2^()"
     script = re.sub(r'(set value of cell "[^"]+" to )((?!"=)[^"]*[+*^/-][^"]*)$', r'\1"=\2"', script, flags=re.MULTILINE)
+
+    # log2(N) to LOG(N, 2)
+    script = re.compile(r'(?i)\blog2\s*\(\s*([^)]+?)\s*\)').sub(lambda m: f"LOG({m.group(1).strip()}, 2)", script)
 
     # remove formula after each set
     script = re.sub(r'(set value of cell "([^"]+)" to [^\n]+)', r'\1\nset value of cell "\2" to value of cell "\2"', script)

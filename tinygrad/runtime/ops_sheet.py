@@ -97,7 +97,6 @@ class SheetAllocator(Allocator['SheetDevice']):
                 end tell
             end tell
         end tell"""
-        print(full_script)
         subprocess.run(['osascript', '-e', full_script], capture_output=False, text=True)
 
   def _copyout(self, dest:memoryview, src:int, dtype:dtypes):
@@ -126,7 +125,6 @@ class SheetAllocator(Allocator['SheetDevice']):
         end tell
     end tell
     '''
-    print(self.script)
     result = subprocess.run(['osascript', '-e', self.script], capture_output=True, text=True)
     result = result.stdout.replace(" ","").replace("\n","").split(",")
     result = [float(x) for x in result]
@@ -137,7 +135,8 @@ class SheetAllocator(Allocator['SheetDevice']):
   def copyin_numbers(self, x, cell):
     cell = get_cell(cell)
     if type(x) == float: x = round(x, 8)
-    self.numbes_lines.append(f'set value of cell "{cell}" to {x}')
+    if cell == x: exit()
+    if cell != x: self.numbes_lines.append(f'set value of cell "{cell}" to {x}')
 
 def get_cell(n, max_cols=COLS):  # max_cols is how many columns per row
     def number_to_column(num):
@@ -228,7 +227,7 @@ class SheetProgram:
     script = re.sub(r'(?i)\blog2\s*\(([^()]*?(?:\([^()]*\)[^()]*)*)\)', r'LOG(\1, 2)', script)
 
     # remove formula after each set
-    script = re.sub(r'(set value of cell "([^"]+)" to [^\n]+)', r'\1\nset value of cell "\2" to value of cell "\2"', script)
+    script = re.sub(r'set value of cell "([^"]+)" to value of cell "\1"\n?','',script)
 
     # remove f for floats
     script = re.sub(r'(\d+)f', r'\1', script)
@@ -249,7 +248,6 @@ class SheetProgram:
 
     # ((T2<T1)?T1:T2)
     script = re.sub(r'\(\(([^?]+)<([^?]+)\)\?([^:]+):([^)]+)\)', r'IF(\1<\2, \3, \4)', script)
-
     batch_size = 100_000
     script_lines = script.strip().split('\n')
 
@@ -279,7 +277,6 @@ class SheetProgram:
                 end tell
             end tell
         end tell"""
-        print(full_script)
         subprocess.run(['osascript', '-e', full_script], capture_output=False, text=True)
       
 class SheetDevice(Compiled):

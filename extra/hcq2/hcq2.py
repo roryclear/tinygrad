@@ -53,8 +53,8 @@ class HCQ2Compiled(Compiled):
     sig = self.timeline_signal()._buf.cpu_view().mv.cast('Q')
     tl = self.timeline_value().as_memoryview(force_zero_copy=True).cast('Q')
     st = time.perf_counter()
-    while sig[0] < tl[0] - 1:
-      if time.perf_counter() - st > (timeout or 3000) / 1000: self.on_device_hang()
+    while sig[0] < tl[0] - 1: # increased from 3000
+      if time.perf_counter() - st > (timeout or 30000) / 1000: self.on_device_hang()
 
   def device_props(self) -> dict[str,Any]: return {} # to be overridden if needed. dict keys are backend dependent.
 

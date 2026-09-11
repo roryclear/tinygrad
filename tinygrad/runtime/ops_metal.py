@@ -160,6 +160,7 @@ class MetalBuffer:
 class MetalAllocator(LRUAllocator[MetalDevice]):
   def _alloc(self, size:int, options) -> MetalBuffer:
     self.dev.buf_num+=1
+    self.dev.q.append({"buff_alloc":{"num":self.dev.buf_num, "size":size}})
     if options.external_ptr: return MetalBuffer(metal.MTLBuffer(options.external_ptr), size, num=self.dev.buf_num)
 
     # Buffer is explicitly released in _free() rather than garbage collected via reference count
@@ -200,7 +201,7 @@ class MetalAllocator(LRUAllocator[MetalDevice]):
   def _copyout(self, dest:memoryview, src:MetalBuffer):
     self.dev.q.append({"copyout": src.num})
 
-    '''
+    
     url = "http://192.168.1.11:6667/batch"
     data = json.dumps(self.dev.q).encode("utf-8")
     req = urllib.request.Request(
@@ -213,7 +214,7 @@ class MetalAllocator(LRUAllocator[MetalDevice]):
     with urllib.request.urlopen(req, timeout=10) as resp:
       print("Status:", resp.status)
       print("Body:", resp.read().decode("utf-8", errors="replace"))
-    '''
+    
     self.dev.q = []
 
     self._cp_mv(dest, self._as_buffer(src), "METAL -> TINY")

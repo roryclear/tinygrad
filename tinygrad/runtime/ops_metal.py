@@ -45,8 +45,8 @@ class MetalDevice(Compiled):
     from tinygrad.runtime.graph.metal import MetalGraph
     # NOTE: GitHub CI macOS runners use paravirtualized metal which is broken with graph.
     # This can be reproduced locally with any virtualization software (like utm) that can create macOS VMs with apple's own virtualization framework.
-    super().__init__(device, MetalAllocator(self), [MetalRenderer],
-      functools.partial(MetalProgram, self), MetalGraph if 'virtual' not in from_ns_str(self.sysdevice.name()).lower() else None,
+    super().__init__(device, MetalAllocator(self), [MetalRenderer], # no metalgraph
+      functools.partial(MetalProgram, self), MetalGraph if 'virtual' not in from_ns_str(self.sysdevice.name()).lower() and 1==2 else None,
       arch=metal.enum_MTLGPUFamily[check_family("Apple") or check_family("Mac")][12:])
 
   def synchronize(self):
@@ -187,6 +187,10 @@ class MetalAllocator(LRUAllocator[MetalDevice]):
   def _as_buffer(self, src:MetalBuffer) -> memoryview:
     self.dev.synchronize()
     return to_mv(src.buf.contents(), src.size + src.offset)[src.offset:]
-  def _copyin(self, dest:MetalBuffer, src:memoryview): self._cp_mv(self._as_buffer(dest), src, "TINY -> METAL")
-  def _copyout(self, dest:memoryview, src:MetalBuffer): self._cp_mv(dest, self._as_buffer(src), "METAL -> TINY")
-  def _offset(self, buf:MetalBuffer, size:int, offset:int): return MetalBuffer(buf.buf, size, offset)
+  def _copyin(self, dest:MetalBuffer, src:memoryview):
+    print("rory copyin")
+    self._cp_mv(self._as_buffer(dest), src, "TINY -> METAL")
+  def _copyout(self, dest:memoryview, src:MetalBuffer):
+    print("rory copyout")
+    self._cp_mv(dest, self._as_buffer(src), "METAL -> TINY")
+  #def _offset(self, buf:MetalBuffer, size:int, offset:int): return MetalBuffer(buf.buf, size, offset)

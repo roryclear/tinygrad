@@ -132,6 +132,8 @@ class MetalProgram:
     self.max_total_threads: int = self.pipeline_state.maxTotalThreadsPerThreadgroup()
 
   def __call__(self, *bufs, global_size:tuple[int,int,int]=(1,1,1), local_size:tuple[int,int,int]=(1,1,1), vals:tuple[int, ...]=(), wait=False, **kw):
+    self.dev.q.append({"call":{"name":self.name, "buffers":[b.num for b in bufs], "buffer_offsets":[b.offset for b in bufs],
+                       "vals":vals, "local_size":local_size, "global_size":global_size}})
     if prod(local_size) > self.max_total_threads:
       exec_width = self.pipeline_state.threadExecutionWidth()
       memory_length = self.pipeline_state.staticThreadgroupMemoryLength()

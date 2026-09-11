@@ -117,6 +117,7 @@ class MetalCompiler(Compiler):
 class MetalProgram:
   def __init__(self, dev:MetalDevice, name:str, lib:bytes, **kwargs):
     self.dev, self.name, self.lib = dev, name, lib
+    self.dev.q.append({"program":{"name": name, "lib":base64.b64encode(bytes(lib)).decode("ascii")}})
     data = objc.dispatch_data_create(lib, len(lib), None, None)
     self.library = self.dev.sysdevice.newLibraryWithData_error(data, ctypes.byref(error_lib:=metal.NSError().retained())).retained()
     error_check(error_lib)

@@ -5,6 +5,7 @@ from tinygrad.device import Compiled, Compiler, CompileError, LRUAllocator, Prof
 from tinygrad.renderer.cstyle import MetalRenderer
 from tinygrad.runtime.autogen import metal
 from tinygrad.runtime.support.c import DLL
+import base64
 
 # 13 is requestType that metal uses to compile source code into MTLB, there aren't any docs or symbols.
 REQUEST_TYPE_COMPILE = 13
@@ -30,6 +31,8 @@ def error_check(error: metal.NSError, error_constructor: type[Exception] = Runti
 
 class MetalDevice(Compiled):
   def __init__(self, device:str):
+    self.buf_num = 0
+    self.q = []
     self.sysdevice = metal.MTLCreateSystemDefaultDevice()
     self.mtl_queue = self.sysdevice.newCommandQueueWithMaxCommandBufferCount(1024)
     if self.mtl_queue is None: raise RuntimeError("Cannot allocate a new command queue")
@@ -149,17 +152,18 @@ class MetalProgram:
       return command_buffer.GPUEndTime() - command_buffer.GPUStartTime()
 
 class MetalBuffer:
-  def __init__(self, buf:metal.MTLBuffer, size:int, offset=0): self.buf, self.size, self.offset = buf, size, offset
+  def __init__(self, buf:metal.MTLBuffer, size:int, offset=0, num=0): self.buf, self.size, self.offset, self.num = buf, size, offset, num
 
 class MetalAllocator(LRUAllocator[MetalDevice]):
   def _alloc(self, size:int, options) -> MetalBuffer:
-    if options.external_ptr: return MetalBuffer(metal.MTLBuffer(options.external_ptr), size)
+    self.dev.buf_num+=1
+    if options.external_ptr: return MetalBuffer(metal.MTLBuffer(options.external_ptr), size, num=self.dev.buf_num)
 
     # Buffer is explicitly released in _free() rather than garbage collected via reference count
     ret = self.dev.sysdevice.newBufferWithLength_options(size, metal.MTLResourceStorageModeShared)
     ret.retain = False
     if ret.value is None: raise MemoryError(f"Metal OOM while allocating {size=}")
-    return MetalBuffer(ret, size)
+    return MetalBuffer(ret, size, num=self.dev.buf_num)
   @suppress_finalizing
   def _free(self, opaque:MetalBuffer, options):
     if not options.external_ptr: opaque.buf.release()
@@ -188,9 +192,11 @@ class MetalAllocator(LRUAllocator[MetalDevice]):
     self.dev.synchronize()
     return to_mv(src.buf.contents(), src.size + src.offset)[src.offset:]
   def _copyin(self, dest:MetalBuffer, src:memoryview):
-    print("rory copyin")
+    self.dev.q.append({"copyin": {"dest":dest.num, "data": base64.b64encode(bytes(src)).decode("ascii")}})
     self._cp_mv(self._as_buffer(dest), src, "TINY -> METAL")
   def _copyout(self, dest:memoryview, src:MetalBuffer):
-    print("rory copyout")
+    self.dev.q.append({"copyout": src.num})
+    print(self.dev.q)
+    self.dev.q = []
     self._cp_mv(dest, self._as_buffer(src), "METAL -> TINY")
   #def _offset(self, buf:MetalBuffer, size:int, offset:int): return MetalBuffer(buf.buf, size, offset)

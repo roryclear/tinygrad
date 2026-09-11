@@ -5,7 +5,7 @@ from tinygrad.device import Compiled, Compiler, CompileError, LRUAllocator, Prof
 from tinygrad.renderer.cstyle import MetalRenderer
 from tinygrad.runtime.autogen import metal
 from tinygrad.runtime.support.c import DLL
-import base64
+import urllib, json, base64
 
 # 13 is requestType that metal uses to compile source code into MTLB, there aren't any docs or symbols.
 REQUEST_TYPE_COMPILE = 13
@@ -195,11 +195,26 @@ class MetalAllocator(LRUAllocator[MetalDevice]):
     self.dev.synchronize()
     return to_mv(src.buf.contents(), src.size + src.offset)[src.offset:]
   def _copyin(self, dest:MetalBuffer, src:memoryview):
-    self.dev.q.append({"copyin": {"dest":dest.num, "data": base64.b64encode(bytes(src)).decode("ascii")}})
+    #self.dev.q.append({"copyin": {"dest":dest.num, "data": base64.b64encode(bytes(src)).decode("ascii")}})
     self._cp_mv(self._as_buffer(dest), src, "TINY -> METAL")
   def _copyout(self, dest:memoryview, src:MetalBuffer):
     self.dev.q.append({"copyout": src.num})
-    print(self.dev.q)
+
+    '''
+    url = "http://192.168.1.11:6667/batch"
+    data = json.dumps(self.dev.q).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    with urllib.request.urlopen(req, timeout=10) as resp:
+      print("Status:", resp.status)
+      print("Body:", resp.read().decode("utf-8", errors="replace"))
+    '''
     self.dev.q = []
+
     self._cp_mv(dest, self._as_buffer(src), "METAL -> TINY")
   #def _offset(self, buf:MetalBuffer, size:int, offset:int): return MetalBuffer(buf.buf, size, offset)

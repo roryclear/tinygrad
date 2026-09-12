@@ -203,11 +203,11 @@ class MetalAllocator(LRUAllocator[MetalDevice]):
 
     metas, blobs, off = [], [], 0
     for op in self.dev.q:
-        if "copyin" in op:
-            d = op["copyin"]; b = bytes(d.pop("data"))
-            metas.append({"copyin": {**d, "off": off}}); blobs.append(b); off += len(b)
-        else:
-            metas.append(op)
+      if "copyin" in op:
+        d = op["copyin"]; b = bytes(d.pop("data"))
+        metas.append({"copyin": {**d, "off": off}}); blobs.append(b); off += len(b)
+      else:
+        metas.append(op)
     meta = json.dumps(metas).encode()
     body = struct.pack("<I", len(meta)) + meta + b"".join(blobs)
     self.dev.q = []

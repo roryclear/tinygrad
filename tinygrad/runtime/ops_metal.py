@@ -5,7 +5,7 @@ from tinygrad.device import Compiled, Compiler, CompileError, LRUAllocator, Prof
 from tinygrad.renderer.cstyle import MetalRenderer
 from tinygrad.runtime.autogen import metal
 from tinygrad.runtime.support.c import DLL
-import urllib, json, base64
+import urllib, json, base64, urllib.request
 
 # 13 is requestType that metal uses to compile source code into MTLB, there aren't any docs or symbols.
 REQUEST_TYPE_COMPILE = 13
@@ -214,9 +214,10 @@ class MetalAllocator(LRUAllocator[MetalDevice]):
 
     req = urllib.request.Request("http://192.168.1.11:6667/batch", data=body,
                                 headers={"Content-Type": "application/octet-stream"}, method="POST")
-    with urllib.request.urlopen(req, timeout=300) as resp: resp.read()
-    
+    with urllib.request.urlopen(req, timeout=300) as resp:
+      data = resp.read()
+      print(data, "actual =", self._as_buffer(src).tobytes())
     self.dev.q = []
 
-    self._cp_mv(dest, self._as_buffer(src), "METAL -> TINY")
+    self._cp_mv(dest, memoryview(data), "METAL -> TINY")
   #def _offset(self, buf:MetalBuffer, size:int, offset:int): return MetalBuffer(buf.buf, size, offset)

@@ -196,24 +196,25 @@ class MetalAllocator(LRUAllocator[MetalDevice]):
     self.dev.synchronize()
     return to_mv(src.buf.contents(), src.size + src.offset)[src.offset:]
   def _copyin(self, dest:MetalBuffer, src:memoryview):
-    #self.dev.q.append({"copyin": {"dest":dest.num, "data": base64.b64encode(bytes(src)).decode("ascii")}})
+    self.dev.q.append({"copyin": {"dest": dest.num, "len": len(src), "data": memoryview(src)}})
     self._cp_mv(self._as_buffer(dest), src, "TINY -> METAL")
   def _copyout(self, dest:memoryview, src:MetalBuffer):
     self.dev.q.append({"copyout": src.num})
 
-    
-    url = "http://192.168.1.11:6667/batch"
-    data = json.dumps(self.dev.q).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=data,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
+    metas, blobs, off = [], [], 0
+    for op in self.dev.q:
+        if "copyin" in op:
+            d = op["copyin"]; b = bytes(d.pop("data"))
+            metas.append({"copyin": {**d, "off": off}}); blobs.append(b); off += len(b)
+        else:
+            metas.append(op)
+    meta = json.dumps(metas).encode()
+    body = struct.pack("<I", len(meta)) + meta + b"".join(blobs)
+    self.dev.q = []
 
-    with urllib.request.urlopen(req, timeout=10) as resp:
-      print("Status:", resp.status)
-      print("Body:", resp.read().decode("utf-8", errors="replace"))
+    req = urllib.request.Request("http://192.168.1.11:6667/batch", data=body,
+                                headers={"Content-Type": "application/octet-stream"}, method="POST")
+    with urllib.request.urlopen(req, timeout=300) as resp: resp.read()
     
     self.dev.q = []
 

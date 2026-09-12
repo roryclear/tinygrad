@@ -200,7 +200,14 @@ class MetalAllocator(LRUAllocator[MetalDevice]):
     self._cp_mv(self._as_buffer(dest), src, "TINY -> METAL")
   def _copyout(self, dest:memoryview, src:MetalBuffer):
     self.dev.q.append({"copyout": src.num})
-
+    data = self.send_q()
+    print(data, "actual =", self._as_buffer(src).tobytes())
+    self.dev.q = []
+    
+    assert memoryview(data) == self._as_buffer(src)
+    self._cp_mv(dest, memoryview(data), "METAL -> TINY")
+    #self._cp_mv(dest, self._as_buffer(src), "METAL -> TINY")
+  def send_q(self):
     metas, blobs, off = [], [], 0
     for op in self.dev.q:
       if "copyin" in op:
@@ -211,13 +218,8 @@ class MetalAllocator(LRUAllocator[MetalDevice]):
     meta = json.dumps(metas).encode()
     body = struct.pack("<I", len(meta)) + meta + b"".join(blobs)
     self.dev.q = []
-
+    
     req = urllib.request.Request("http://192.168.1.11:6667/batch", data=body,
                                 headers={"Content-Type": "application/octet-stream"}, method="POST")
-    with urllib.request.urlopen(req, timeout=300) as resp:
-      data = resp.read()
-      print(data, "actual =", self._as_buffer(src).tobytes())
-    self.dev.q = []
-
-    self._cp_mv(dest, memoryview(data), "METAL -> TINY")
+    with urllib.request.urlopen(req, timeout=300) as resp: return resp.read()
   #def _offset(self, buf:MetalBuffer, size:int, offset:int): return MetalBuffer(buf.buf, size, offset)

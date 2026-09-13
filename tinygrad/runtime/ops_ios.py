@@ -49,7 +49,7 @@ class IOSAllocator(LRUAllocator[IOSDevice]):
     with cpu_profile(prof_desc, f"{self.dev.device}:COPY"): dst[:] = src
   def _copyin(self, dest:IOSBuffer, src:memoryview):
     self.dev.q.append({"copyin": {"dest": dest.num, "len": len(src), "data": memoryview(src)}})
-    if os.environ.get("EAGER_COPYIN") == "1": self.dev.send_q()
+    if os.environ.get("LAZY_COPYIN") != "1": self.dev.send_q()
   def _copyout(self, dest:memoryview, src:IOSBuffer):
     self.dev.q.append({"copyout": src.num})
     data = self.dev.send_q()

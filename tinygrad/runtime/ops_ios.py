@@ -3,6 +3,7 @@ from tinygrad.helpers import cpu_profile
 from tinygrad.device import Compiled, LRUAllocator
 from tinygrad.renderer.cstyle import MetalRenderer
 import urllib, json, base64, urllib.request
+from tinygrad.helpers import diskcache_get
 
 class IOSDevice(Compiled):
   def __init__(self, device:str):
@@ -27,8 +28,8 @@ class IOSDevice(Compiled):
 
 class MetalProgram:
   def __init__(self, dev:IOSDevice, name:str, lib:bytes, **kwargs):
-    self.dev, self.name, self.lib = dev, name, lib
-    self.dev.q.append({"program":{"name": name, "lib":base64.b64encode(bytes(lib)).decode("ascii")}})
+    self.dev, self.name, self.lib, self.src = dev, name, lib, diskcache_get("compile_metal_direct", key=str(lib))
+    self.dev.q.append({"program":{"name": name, "lib":base64.b64encode(bytes(lib)).decode("ascii"), "src": self.src}})
 
   def __call__(self, *bufs, global_size:tuple[int,int,int]=(1,1,1), local_size:tuple[int,int,int]=(1,1,1), vals:tuple[int, ...]=(), wait=False, **kw):
     self.dev.q.append({"call":{"name":self.name, "buffers":[b.num for b in bufs], "buffer_offsets":[b.offset for b in bufs],

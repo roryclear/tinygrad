@@ -280,7 +280,9 @@ class Compiler:
     if self.cachekey is None or (lib := diskcache_get(self.cachekey, src)) is None:
       assert not getenv("ASSERT_COMPILE"), f"tried to compile with ASSERT_COMPILE set\n{src}"
       lib = self.compile(src)
-      if self.cachekey is not None: diskcache_put(self.cachekey, src, lib)
+      if self.cachekey is not None:
+        diskcache_put(self.cachekey, src, lib)
+        diskcache_put(self.cachekey, str(lib), src) # reverse
     return lib
   def disassemble(self, lib:bytes): pass
 

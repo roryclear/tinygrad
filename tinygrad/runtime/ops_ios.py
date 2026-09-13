@@ -78,59 +78,6 @@ class IOSDevice(Compiled):
                                 headers={"Content-Type": "application/octet-stream"}, method="POST")
     with urllib.request.urlopen(req, timeout=300) as resp: return resp.read()
 
-class MetalCompiler(Compiler):
-  # Opening METAL after LLVM doesn't fail because ctypes.CDLL opens with RTLD_LOCAL but MTLCompiler opens it's own llvm with RTLD_GLOBAL
-  # This means that MTLCompiler's llvm will create it's own instances of global state because RTLD_LOCAL doesn't export symbols, but if RTLD_GLOBAL
-  # library is loaded first then RTLD_LOCAL library will just use it's symbols. On linux there is RTLD_DEEPBIND to prevent that, but on macos there
-  # doesn't seem to be anything we can do.
-  import tinygrad.runtime.autogen.llvm as _
-  support = DLL("MTLCompiler", "MTLCompiler")
-  support.MTLCodeGenServiceCreate.restype = ctypes.c_void_p
-
-  def __init__(self):
-    self.cgs = ctypes.c_void_p(MetalCompiler.support.MTLCodeGenServiceCreate(b"tinygrad"))
-    super().__init__("compile_metal_direct")
-  def __reduce__(self): return (MetalCompiler,()) # force pickle to create new instance for each multiprocessing fork
-  def compile(self, src:str) -> bytes:
-    ret: Exception|bytes = CompileError("MTLCodeGenServiceBuildRequest returned without calling the callback")
-    @ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_int32, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_char_p)
-    def callback(blockptr, error, dataPtr, dataLen, errorMessage):
-      nonlocal ret
-      if error == 0:
-        reply = bytes(to_mv(dataPtr, dataLen))
-        # offset from beginning to data = header size + warning size
-        ret = reply[sum(struct.unpack('<LL', reply[8:16])):]
-      else:
-        ret = CompileError(errorMessage.decode())
-
-    # no changes for compute in 2.0 - 2.4 specs, use 2.0 as default for old versions.
-    macos_major = int(platform.mac_ver()[0].split('.')[0])
-    metal_version = "metal4.0" if macos_major >= 26 else "metal3.1" if macos_major >= 14 else "metal3.0" if macos_major >= 13 else "macos-metal2.0"
-
-    # llvm will create modules.timestamp in cache path and cache compilation of metal stdlib (250ms => 8ms compilation time)
-    # note that llvm won't necessarily create anything else here as apple has prebuilt versions of many standard libraries
-    params = f'-fno-fast-math -std={metal_version} --driver-mode=metal -x metal -fmodules-cache-path="{cache_dir}" -fno-caret-diagnostics'
-    # source blob has to be padded to multiple of 4 but at least one 'b\x00' should be added, params blob just has to be null terminated
-    src_padded, params_padded = src.encode() + b'\x00'*(round_up(len(src) + 1, 4) - len(src)), params.encode() + b'\x00'
-    request = struct.pack('<QQ', len(src_padded), len(params_padded)) + src_padded + params_padded
-    # The callback is actually not a callback but a block which is apple's non-standard extension to add closures to C.
-    # See https://clang.llvm.org/docs/Block-ABI-Apple.html#high-level for struct layout.
-    # Fields other than invoke are unused in this case so we can just use ctypes.byref with negative offset to invoke field, add blockptr as a first
-    # argument and pretend it's a normal callback
-    MetalCompiler.support.MTLCodeGenServiceBuildRequest(self.cgs, None, REQUEST_TYPE_COMPILE, request, len(request), ctypes.byref(callback, -0x10))
-    if isinstance(ret, Exception): raise ret
-    assert ret[:4] == b"MTLB" and ret[-4:] == b"ENDT", f"Invalid Metal library. {ret!r}"
-    return ret
-  def disassemble(self, lib:bytes):
-    with tempfile.NamedTemporaryFile(delete=True) as shader:
-      shader.write(lib)
-      shader.flush()
-      proc = subprocess.Popen(f"cd {pathlib.Path(__file__).parents[2]}/extra/disassemblers/applegpu && python3 compiler_explorer.py {shader.name}",
-                              stdout=subprocess.PIPE, shell=True, text=True, bufsize=1)
-      for line in unwrap(proc.stdout): print(line, end="")
-      ret = proc.wait()
-      if ret: print("Disassembler Error: Make sure you have https://github.com/dougallj/applegpu cloned to tinygrad/extra/disassemblers/applegpu")
-
 class MetalProgram:
   def __init__(self, dev:IOSDevice, name:str, lib:bytes, **kwargs):
     self.dev, self.name, self.lib = dev, name, lib

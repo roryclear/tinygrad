@@ -1,20 +1,9 @@
-import  struct, ctypes, functools
-from tinygrad.helpers import to_mv, cpu_profile, suppress_finalizing
-import tinygrad.runtime.support.objc as objc
-from tinygrad.device import Compiled, LRUAllocator, ProfileDeviceEvent
+import  struct, functools
+from tinygrad.helpers import cpu_profile
+from tinygrad.device import Compiled, LRUAllocator
 from tinygrad.renderer.cstyle import MetalRenderer
 from tinygrad.runtime.autogen import metal
-from tinygrad.runtime.support.c import DLL
 import urllib, json, base64, urllib.request
-
-# Must be loaded for default Metal Device: https://developer.apple.com/documentation/metal/1433401-mtlcreatesystemdefaultdevice?language=objc
-DLL("CoreGraphics", "CoreGraphics")
-
-# FIXME: these need autogen to support objc categories
-# https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/ObjectiveC/Chapters/ocCategories.html
-@functools.cache
-def to_ns_str(s: str): return ctypes.cast(objc.msg("stringWithUTF8String:")(metal.NSString._objc_class_, s.encode()), metal.NSString)
-def from_ns_str(s): return bytes(objc.msg("UTF8String", ctypes.c_char_p)(s)).decode()
 
 class IOSDevice(Compiled):
   def __init__(self, device:str):

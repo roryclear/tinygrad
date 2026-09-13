@@ -22,7 +22,9 @@ class IOSDevice(Compiled):
     meta = json.dumps(metas).encode()
     body = struct.pack("<I", len(meta)) + meta + b"".join(blobs)
     self.q = []
-    req = urllib.request.Request("http://192.168.1.11:6667/batch", data=body,
+    assert os.environ.get("IP") is not None, "no IP address provided, use IP=(iOS IP)."
+    ip = os.environ.get("IP")
+    req = urllib.request.Request(f"http://{ip}/batch", data=body,
                                 headers={"Content-Type": "application/octet-stream"}, method="POST")
     with urllib.request.urlopen(req, timeout=300) as resp: return resp.read()
 

@@ -52,24 +52,19 @@ class MetalProgram:
                        "vals":vals, "local_size":local_size, "global_size":global_size}})
     # todo, if wait for BEAM
 
-class MetalBuffer:
-  def __init__(self, buf:metal.MTLBuffer, size:int, offset=0, num=0): self.buf, self.size, self.offset, self.num = buf, size, offset, num
+class IOSBuffer:
+  def __init__(self, size:int, offset=0, num=0): self.size, self.offset, self.num = size, offset, num
 
 class IOSAllocator(LRUAllocator[IOSDevice]):
-  def _alloc(self, size:int, options) -> MetalBuffer:
+  def _alloc(self, size:int, options) -> IOSBuffer:
     self.dev.buf_num+=1
     self.dev.q.append({"buff_alloc":{"num":self.dev.buf_num, "size":size}})
-    if options.external_ptr: return MetalBuffer(metal.MTLBuffer(options.external_ptr), size, num=self.dev.buf_num)
-
-    # Buffer is explicitly released in _free() rather than garbage collected via reference count
-    ret = self.dev.sysdevice.newBufferWithLength_options(size, metal.MTLResourceStorageModeShared)
-    ret.retain = False
-    if ret.value is None: raise MemoryError(f"Metal OOM while allocating {size=}")
-    return MetalBuffer(ret, size, num=self.dev.buf_num)
+    if options.external_ptr: return IOSBuffer(size, num=self.dev.buf_num)
+    return IOSBuffer(size, num=self.dev.buf_num)
   def _cp_mv(self, dst, src, prof_desc):
     with cpu_profile(prof_desc, f"{self.dev.device}:COPY"): dst[:] = src
-  def _copyin(self, dest:MetalBuffer, src:memoryview): self.dev.q.append({"copyin": {"dest": dest.num, "len": len(src), "data": memoryview(src)}})
-  def _copyout(self, dest:memoryview, src:MetalBuffer):
+  def _copyin(self, dest:IOSBuffer, src:memoryview): self.dev.q.append({"copyin": {"dest": dest.num, "len": len(src), "data": memoryview(src)}})
+  def _copyout(self, dest:memoryview, src:IOSBuffer):
     self.dev.q.append({"copyout": src.num})
     data = self.dev.send_q()
     self._cp_mv(dest, memoryview(data), "METAL -> TINY")

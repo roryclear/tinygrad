@@ -1,4 +1,4 @@
-import  struct, functools
+import  struct, functools, os
 from tinygrad.helpers import cpu_profile
 from tinygrad.device import Compiled, LRUAllocator
 from tinygrad.renderer.cstyle import MetalRenderer
@@ -52,7 +52,9 @@ class IOSAllocator(LRUAllocator[IOSDevice]):
     return IOSBuffer(size, num=self.dev.buf_num)
   def _cp_mv(self, dst, src, prof_desc):
     with cpu_profile(prof_desc, f"{self.dev.device}:COPY"): dst[:] = src
-  def _copyin(self, dest:IOSBuffer, src:memoryview): self.dev.q.append({"copyin": {"dest": dest.num, "len": len(src), "data": memoryview(src)}})
+  def _copyin(self, dest:IOSBuffer, src:memoryview):
+    self.dev.q.append({"copyin": {"dest": dest.num, "len": len(src), "data": memoryview(src)}})
+    if os.environ.get("EAGER_COPYIN") == "1": self.dev.send_q()
   def _copyout(self, dest:memoryview, src:IOSBuffer):
     self.dev.q.append({"copyout": src.num})
     data = self.dev.send_q()

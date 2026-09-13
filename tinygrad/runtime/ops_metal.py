@@ -5,7 +5,6 @@ from tinygrad.device import Compiled, Compiler, CompileError, LRUAllocator, Prof
 from tinygrad.renderer.cstyle import MetalRenderer
 from tinygrad.runtime.autogen import metal
 from tinygrad.runtime.support.c import DLL
-import urllib, json, base64, urllib.request
 
 # 13 is requestType that metal uses to compile source code into MTLB, there aren't any docs or symbols.
 REQUEST_TYPE_COMPILE = 13
@@ -31,8 +30,6 @@ def error_check(error: metal.NSError, error_constructor: type[Exception] = Runti
 
 class MetalDevice(Compiled):
   def __init__(self, device:str):
-    self.buf_num = 0
-    self.q = []
     self.sysdevice = metal.MTLCreateSystemDefaultDevice()
     self.mtl_queue = self.sysdevice.newCommandQueueWithMaxCommandBufferCount(1024)
     if self.mtl_queue is None: raise RuntimeError("Cannot allocate a new command queue")
@@ -48,8 +45,8 @@ class MetalDevice(Compiled):
     from tinygrad.runtime.graph.metal import MetalGraph
     # NOTE: GitHub CI macOS runners use paravirtualized metal which is broken with graph.
     # This can be reproduced locally with any virtualization software (like utm) that can create macOS VMs with apple's own virtualization framework.
-    super().__init__(device, MetalAllocator(self), [MetalRenderer], # no metalgraph
-      functools.partial(MetalProgram, self), MetalGraph if 'virtual' not in from_ns_str(self.sysdevice.name()).lower() and 1==2 else None,
+    super().__init__(device, MetalAllocator(self), [MetalRenderer],
+      functools.partial(MetalProgram, self), MetalGraph if 'virtual' not in from_ns_str(self.sysdevice.name()).lower() else None,
       arch=metal.enum_MTLGPUFamily[check_family("Apple") or check_family("Mac")][12:])
 
   def synchronize(self):
@@ -117,7 +114,6 @@ class MetalCompiler(Compiler):
 class MetalProgram:
   def __init__(self, dev:MetalDevice, name:str, lib:bytes, **kwargs):
     self.dev, self.name, self.lib = dev, name, lib
-    self.dev.q.append({"program":{"name": name, "lib":base64.b64encode(bytes(lib)).decode("ascii")}})
     data = objc.dispatch_data_create(lib, len(lib), None, None)
     self.library = self.dev.sysdevice.newLibraryWithData_error(data, ctypes.byref(error_lib:=metal.NSError().retained())).retained()
     error_check(error_lib)
@@ -132,8 +128,6 @@ class MetalProgram:
     self.max_total_threads: int = self.pipeline_state.maxTotalThreadsPerThreadgroup()
 
   def __call__(self, *bufs, global_size:tuple[int,int,int]=(1,1,1), local_size:tuple[int,int,int]=(1,1,1), vals:tuple[int, ...]=(), wait=False, **kw):
-    self.dev.q.append({"call":{"name":self.name, "buffers":[b.num for b in bufs], "buffer_offsets":[b.offset for b in bufs],
-                       "vals":vals, "local_size":local_size, "global_size":global_size}})
     if prod(local_size) > self.max_total_threads:
       exec_width = self.pipeline_state.threadExecutionWidth()
       memory_length = self.pipeline_state.staticThreadgroupMemoryLength()
@@ -155,19 +149,17 @@ class MetalProgram:
       return command_buffer.GPUEndTime() - command_buffer.GPUStartTime()
 
 class MetalBuffer:
-  def __init__(self, buf:metal.MTLBuffer, size:int, offset=0, num=0): self.buf, self.size, self.offset, self.num = buf, size, offset, num
+  def __init__(self, buf:metal.MTLBuffer, size:int, offset=0): self.buf, self.size, self.offset = buf, size, offset
 
 class MetalAllocator(LRUAllocator[MetalDevice]):
   def _alloc(self, size:int, options) -> MetalBuffer:
-    self.dev.buf_num+=1
-    self.dev.q.append({"buff_alloc":{"num":self.dev.buf_num, "size":size}})
-    if options.external_ptr: return MetalBuffer(metal.MTLBuffer(options.external_ptr), size, num=self.dev.buf_num)
+    if options.external_ptr: return MetalBuffer(metal.MTLBuffer(options.external_ptr), size)
 
     # Buffer is explicitly released in _free() rather than garbage collected via reference count
     ret = self.dev.sysdevice.newBufferWithLength_options(size, metal.MTLResourceStorageModeShared)
     ret.retain = False
     if ret.value is None: raise MemoryError(f"Metal OOM while allocating {size=}")
-    return MetalBuffer(ret, size, num=self.dev.buf_num)
+    return MetalBuffer(ret, size)
   @suppress_finalizing
   def _free(self, opaque:MetalBuffer, options):
     if not options.external_ptr: opaque.buf.release()
@@ -195,31 +187,6 @@ class MetalAllocator(LRUAllocator[MetalDevice]):
   def _as_buffer(self, src:MetalBuffer) -> memoryview:
     self.dev.synchronize()
     return to_mv(src.buf.contents(), src.size + src.offset)[src.offset:]
-  def _copyin(self, dest:MetalBuffer, src:memoryview):
-    self.dev.q.append({"copyin": {"dest": dest.num, "len": len(src), "data": memoryview(src)}})
-    self._cp_mv(self._as_buffer(dest), src, "TINY -> METAL")
-  def _copyout(self, dest:memoryview, src:MetalBuffer):
-    self.dev.q.append({"copyout": src.num})
-    data = self.send_q()
-    print(data, "actual =", self._as_buffer(src).tobytes())
-    self.dev.q = []
-    
-    assert memoryview(data) == self._as_buffer(src)
-    self._cp_mv(dest, memoryview(data), "METAL -> TINY")
-    #self._cp_mv(dest, self._as_buffer(src), "METAL -> TINY")
-  def send_q(self):
-    metas, blobs, off = [], [], 0
-    for op in self.dev.q:
-      if "copyin" in op:
-        d = op["copyin"]; b = bytes(d.pop("data"))
-        metas.append({"copyin": {**d, "off": off}}); blobs.append(b); off += len(b)
-      else:
-        metas.append(op)
-    meta = json.dumps(metas).encode()
-    body = struct.pack("<I", len(meta)) + meta + b"".join(blobs)
-    self.dev.q = []
-    
-    req = urllib.request.Request("http://192.168.1.11:6667/batch", data=body,
-                                headers={"Content-Type": "application/octet-stream"}, method="POST")
-    with urllib.request.urlopen(req, timeout=300) as resp: return resp.read()
-  #def _offset(self, buf:MetalBuffer, size:int, offset:int): return MetalBuffer(buf.buf, size, offset)
+  def _copyin(self, dest:MetalBuffer, src:memoryview): self._cp_mv(self._as_buffer(dest), src, "TINY -> METAL")
+  def _copyout(self, dest:memoryview, src:MetalBuffer): self._cp_mv(dest, self._as_buffer(src), "METAL -> TINY")
+  def _offset(self, buf:MetalBuffer, size:int, offset:int): return MetalBuffer(buf.buf, size, offset)

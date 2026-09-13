@@ -1,14 +1,11 @@
-import subprocess, pathlib, struct, ctypes, tempfile, functools, decimal, platform
-from tinygrad.helpers import prod, to_mv, round_up, cache_dir, PROFILE, ProfileRangeEvent, cpu_profile, unwrap, suppress_finalizing
+import  struct, ctypes, functools
+from tinygrad.helpers import to_mv, cpu_profile, suppress_finalizing
 import tinygrad.runtime.support.objc as objc
-from tinygrad.device import Compiled, Compiler, CompileError, LRUAllocator, ProfileDeviceEvent
+from tinygrad.device import Compiled, LRUAllocator, ProfileDeviceEvent
 from tinygrad.renderer.cstyle import MetalRenderer
 from tinygrad.runtime.autogen import metal
 from tinygrad.runtime.support.c import DLL
 import urllib, json, base64, urllib.request
-
-# 13 is requestType that metal uses to compile source code into MTLB, there aren't any docs or symbols.
-REQUEST_TYPE_COMPILE = 13
 
 # Must be loaded for default Metal Device: https://developer.apple.com/documentation/metal/1433401-mtlcreatesystemdefaultdevice?language=objc
 DLL("CoreGraphics", "CoreGraphics")
@@ -18,16 +15,6 @@ DLL("CoreGraphics", "CoreGraphics")
 @functools.cache
 def to_ns_str(s: str): return ctypes.cast(objc.msg("stringWithUTF8String:")(metal.NSString._objc_class_, s.encode()), metal.NSString)
 def from_ns_str(s): return bytes(objc.msg("UTF8String", ctypes.c_char_p)(s)).decode()
-
-def wait_check(cbuf:metal.MTLCommandBuffer):
-  cbuf.waitUntilCompleted()
-  error_check(cbuf.error().retained())
-
-def cmdbuf_label(cbuf:metal.MTLCommandBuffer) -> str|None: return from_ns_str(label) if (label:=cbuf.label()).value is not None else None
-
-def error_check(error: metal.NSError, error_constructor: type[Exception] = RuntimeError):
-  if error.value is None: return None
-  raise error_constructor(from_ns_str(error.localizedDescription().retained()))
 
 class IOSDevice(Compiled):
   def __init__(self, device:str):
@@ -51,16 +38,6 @@ class IOSDevice(Compiled):
     super().__init__(device, MetalAllocator(self), [MetalRenderer], # no metalgraph
       functools.partial(MetalProgram, self), MetalGraph if 'virtual' not in from_ns_str(self.sysdevice.name()).lower() and 1==2 else None,
       arch=metal.enum_MTLGPUFamily[check_family("Apple") or check_family("Mac")][12:])
-
-  def synchronize(self):
-    for cbuf in self.mtl_buffers_in_flight:
-      wait_check(cbuf)
-      st, en = decimal.Decimal(cbuf.GPUStartTime()) * 1000000, decimal.Decimal(cbuf.GPUEndTime()) * 1000000
-      # NOTE: command buffers from MetalGraph are not profiled here
-      if PROFILE and (lb:=cmdbuf_label(cbuf)) is not None and not lb.startswith("batched"):
-        Compiled.profile_events += [ProfileRangeEvent(self.device, lb, st, en)]
-    self.mtl_buffers_in_flight.clear()
-
 
   def send_q(self):
     metas, blobs, off = [], [], 0
@@ -102,28 +79,6 @@ class MetalAllocator(LRUAllocator[IOSDevice]):
     ret.retain = False
     if ret.value is None: raise MemoryError(f"Metal OOM while allocating {size=}")
     return MetalBuffer(ret, size, num=self.dev.buf_num)
-  @suppress_finalizing
-  def _free(self, opaque:MetalBuffer, options):
-    if not options.external_ptr: opaque.buf.release()
-  def _transfer(self, dest:MetalBuffer, src:MetalBuffer, sz:int, src_dev:IOSDevice, dest_dev:IOSDevice):
-    dest_dev.synchronize()
-    src_command_buffer = src_dev.mtl_queue.commandBuffer().retained()
-    encoder = src_command_buffer.blitCommandEncoder().retained()
-    encoder.copyFromBuffer_sourceOffset_toBuffer_destinationOffset_size(src.buf, src.offset, dest.buf, dest.offset, sz)
-    encoder.endEncoding()
-    if src_dev != dest_dev:
-      src_command_buffer.encodeSignalEvent_value(ctypes.cast(src_dev.timeline_signal, metal.MTLEvent), src_dev.timeline_value)
-      dest_command_buffer = dest_dev.mtl_queue.commandBuffer().retained()
-      dest_command_buffer.encodeWaitForEvent_value(ctypes.cast(src_dev.timeline_signal, metal.MTLEvent), src_dev.timeline_value)
-      dest_command_buffer.commit()
-      dest_dev.mtl_buffers_in_flight.append(dest_command_buffer)
-      src_dev.timeline_value += 1
-    src_command_buffer.setLabel(to_ns_str(f"COPY {src_dev.device} -> {dest_dev.device}"))
-    src_command_buffer.commit()
-    src_dev.mtl_buffers_in_flight.append(src_command_buffer)
-    # Transfers currently synchronize the completion. Otherwise, copies can sometimes lead to incorrect values.
-    # There is no real metal multidevice support for now, so transfer is used only for tests.
-    src_dev.synchronize()
   def _cp_mv(self, dst, src, prof_desc):
     with cpu_profile(prof_desc, f"{self.dev.device}:COPY"): dst[:] = src
   def _as_buffer(self, src:MetalBuffer) -> memoryview:
@@ -137,4 +92,3 @@ class MetalAllocator(LRUAllocator[IOSDevice]):
     data = self.dev.send_q()
     self.dev.q = []
     self._cp_mv(dest, memoryview(data), "METAL -> TINY")
-  #def _offset(self, buf:MetalBuffer, size:int, offset:int): return MetalBuffer(buf.buf, size, offset)

@@ -25,19 +25,7 @@ class IOSDevice(Compiled):
     if self.mtl_queue is None: raise RuntimeError("Cannot allocate a new command queue")
     self.mtl_buffers_in_flight: list[metal.MTLCommandBuffer] = []
     self.timeline_signal = self.sysdevice.newSharedEvent()
-    self.timeline_value = 0
-
-    # https://developer.apple.com/documentation/metal/mtlgpufamily
-    def check_family(f): return next(filter(self.sysdevice.supportsFamily, reversed([v for v, nm in metal.enum_MTLGPUFamily.items() if f in nm])), 0)
-
-    Compiled.profile_events += [ProfileDeviceEvent(device)]
-
-    from tinygrad.runtime.graph.metal import MetalGraph
-    # NOTE: GitHub CI macOS runners use paravirtualized metal which is broken with graph.
-    # This can be reproduced locally with any virtualization software (like utm) that can create macOS VMs with apple's own virtualization framework.
-    super().__init__(device, MetalAllocator(self), [MetalRenderer], # no metalgraph
-      functools.partial(MetalProgram, self), MetalGraph if 'virtual' not in from_ns_str(self.sysdevice.name()).lower() and 1==2 else None,
-      arch=metal.enum_MTLGPUFamily[check_family("Apple") or check_family("Mac")][12:])
+    super().__init__(device, IOSAllocator(self), [MetalRenderer], functools.partial(MetalProgram, self), None)
 
   def send_q(self):
     metas, blobs, off = [], [], 0
@@ -68,7 +56,7 @@ class MetalProgram:
 class MetalBuffer:
   def __init__(self, buf:metal.MTLBuffer, size:int, offset=0, num=0): self.buf, self.size, self.offset, self.num = buf, size, offset, num
 
-class MetalAllocator(LRUAllocator[IOSDevice]):
+class IOSAllocator(LRUAllocator[IOSDevice]):
   def _alloc(self, size:int, options) -> MetalBuffer:
     self.dev.buf_num+=1
     self.dev.q.append({"buff_alloc":{"num":self.dev.buf_num, "size":size}})

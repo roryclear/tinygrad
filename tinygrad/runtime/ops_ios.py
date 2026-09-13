@@ -135,18 +135,6 @@ class MetalProgram:
   def __init__(self, dev:IOSDevice, name:str, lib:bytes, **kwargs):
     self.dev, self.name, self.lib = dev, name, lib
     self.dev.q.append({"program":{"name": name, "lib":base64.b64encode(bytes(lib)).decode("ascii")}})
-    data = objc.dispatch_data_create(lib, len(lib), None, None)
-    self.library = self.dev.sysdevice.newLibraryWithData_error(data, ctypes.byref(error_lib:=metal.NSError().retained())).retained()
-    error_check(error_lib)
-    self.fxn = self.library.newFunctionWithName(to_ns_str(name)).retained()
-    descriptor = metal.MTLComputePipelineDescriptor.new()
-    descriptor.setComputeFunction(self.fxn)
-    descriptor.setSupportIndirectCommandBuffers(True)
-    self.pipeline_state = self.dev.sysdevice.newComputePipelineStateWithDescriptor_options_reflection_error(descriptor, metal.MTLPipelineOptionNone,
-      None, ctypes.byref(error_pipeline_creation:=metal.NSError().retained()))
-    error_check(error_pipeline_creation)
-    # cache these msg calls
-    self.max_total_threads: int = self.pipeline_state.maxTotalThreadsPerThreadgroup()
 
   def __call__(self, *bufs, global_size:tuple[int,int,int]=(1,1,1), local_size:tuple[int,int,int]=(1,1,1), vals:tuple[int, ...]=(), wait=False, **kw):
     self.dev.q.append({"call":{"name":self.name, "buffers":[b.num for b in bufs], "buffer_offsets":[b.offset for b in bufs],

@@ -1,0 +1,247 @@
+import subprocess, pathlib, struct, ctypes, tempfile, functools, decimal, platform
+from tinygrad.helpers import prod, to_mv, round_up, cache_dir, PROFILE, ProfileRangeEvent, cpu_profile, unwrap, suppress_finalizing
+import tinygrad.runtime.support.objc as objc
+from tinygrad.device import Compiled, Compiler, CompileError, LRUAllocator, ProfileDeviceEvent
+from tinygrad.renderer.cstyle import MetalRenderer
+from tinygrad.runtime.autogen import metal
+from tinygrad.runtime.support.c import DLL
+import urllib, json, base64, urllib.request
+
+# 13 is requestType that metal uses to compile source code into MTLB, there aren't any docs or symbols.
+REQUEST_TYPE_COMPILE = 13
+
+# Must be loaded for default Metal Device: https://developer.apple.com/documentation/metal/1433401-mtlcreatesystemdefaultdevice?language=objc
+DLL("CoreGraphics", "CoreGraphics")
+
+# FIXME: these need autogen to support objc categories
+# https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/ObjectiveC/Chapters/ocCategories.html
+@functools.cache
+def to_ns_str(s: str): return ctypes.cast(objc.msg("stringWithUTF8String:")(metal.NSString._objc_class_, s.encode()), metal.NSString)
+def from_ns_str(s): return bytes(objc.msg("UTF8String", ctypes.c_char_p)(s)).decode()
+
+def wait_check(cbuf:metal.MTLCommandBuffer):
+  cbuf.waitUntilCompleted()
+  error_check(cbuf.error().retained())
+
+def cmdbuf_label(cbuf:metal.MTLCommandBuffer) -> str|None: return from_ns_str(label) if (label:=cbuf.label()).value is not None else None
+
+def error_check(error: metal.NSError, error_constructor: type[Exception] = RuntimeError):
+  if error.value is None: return None
+  raise error_constructor(from_ns_str(error.localizedDescription().retained()))
+
+class IOSDevice(Compiled):
+  def __init__(self, device:str):
+    self.buf_num = 0
+    self.q = []
+    self.sysdevice = metal.MTLCreateSystemDefaultDevice()
+    self.mtl_queue = self.sysdevice.newCommandQueueWithMaxCommandBufferCount(1024)
+    if self.mtl_queue is None: raise RuntimeError("Cannot allocate a new command queue")
+    self.mtl_buffers_in_flight: list[metal.MTLCommandBuffer] = []
+    self.timeline_signal = self.sysdevice.newSharedEvent()
+    self.timeline_value = 0
+
+    # https://developer.apple.com/documentation/metal/mtlgpufamily
+    def check_family(f): return next(filter(self.sysdevice.supportsFamily, reversed([v for v, nm in metal.enum_MTLGPUFamily.items() if f in nm])), 0)
+
+    Compiled.profile_events += [ProfileDeviceEvent(device)]
+
+    from tinygrad.runtime.graph.metal import MetalGraph
+    # NOTE: GitHub CI macOS runners use paravirtualized metal which is broken with graph.
+    # This can be reproduced locally with any virtualization software (like utm) that can create macOS VMs with apple's own virtualization framework.
+    super().__init__(device, MetalAllocator(self), [MetalRenderer], # no metalgraph
+      functools.partial(MetalProgram, self), MetalGraph if 'virtual' not in from_ns_str(self.sysdevice.name()).lower() and 1==2 else None,
+      arch=metal.enum_MTLGPUFamily[check_family("Apple") or check_family("Mac")][12:])
+
+  def synchronize(self):
+    for cbuf in self.mtl_buffers_in_flight:
+      wait_check(cbuf)
+      st, en = decimal.Decimal(cbuf.GPUStartTime()) * 1000000, decimal.Decimal(cbuf.GPUEndTime()) * 1000000
+      # NOTE: command buffers from MetalGraph are not profiled here
+      if PROFILE and (lb:=cmdbuf_label(cbuf)) is not None and not lb.startswith("batched"):
+        Compiled.profile_events += [ProfileRangeEvent(self.device, lb, st, en)]
+    self.mtl_buffers_in_flight.clear()
+
+
+  def send_q(self):
+    metas, blobs, off = [], [], 0
+    for op in self.q:
+      if "copyin" in op:
+        d = op["copyin"]; b = bytes(d.pop("data"))
+        metas.append({"copyin": {**d, "off": off}}); blobs.append(b); off += len(b)
+      else:
+        metas.append(op)
+    meta = json.dumps(metas).encode()
+    body = struct.pack("<I", len(meta)) + meta + b"".join(blobs)
+    self.q = []
+    
+    req = urllib.request.Request("http://192.168.1.11:6667/batch", data=body,
+                                headers={"Content-Type": "application/octet-stream"}, method="POST")
+    with urllib.request.urlopen(req, timeout=300) as resp: return resp.read()
+
+class MetalCompiler(Compiler):
+  # Opening METAL after LLVM doesn't fail because ctypes.CDLL opens with RTLD_LOCAL but MTLCompiler opens it's own llvm with RTLD_GLOBAL
+  # This means that MTLCompiler's llvm will create it's own instances of global state because RTLD_LOCAL doesn't export symbols, but if RTLD_GLOBAL
+  # library is loaded first then RTLD_LOCAL library will just use it's symbols. On linux there is RTLD_DEEPBIND to prevent that, but on macos there
+  # doesn't seem to be anything we can do.
+  import tinygrad.runtime.autogen.llvm as _
+  support = DLL("MTLCompiler", "MTLCompiler")
+  support.MTLCodeGenServiceCreate.restype = ctypes.c_void_p
+
+  def __init__(self):
+    self.cgs = ctypes.c_void_p(MetalCompiler.support.MTLCodeGenServiceCreate(b"tinygrad"))
+    super().__init__("compile_metal_direct")
+  def __reduce__(self): return (MetalCompiler,()) # force pickle to create new instance for each multiprocessing fork
+  def compile(self, src:str) -> bytes:
+    ret: Exception|bytes = CompileError("MTLCodeGenServiceBuildRequest returned without calling the callback")
+    @ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_int32, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_char_p)
+    def callback(blockptr, error, dataPtr, dataLen, errorMessage):
+      nonlocal ret
+      if error == 0:
+        reply = bytes(to_mv(dataPtr, dataLen))
+        # offset from beginning to data = header size + warning size
+        ret = reply[sum(struct.unpack('<LL', reply[8:16])):]
+      else:
+        ret = CompileError(errorMessage.decode())
+
+    # no changes for compute in 2.0 - 2.4 specs, use 2.0 as default for old versions.
+    macos_major = int(platform.mac_ver()[0].split('.')[0])
+    metal_version = "metal4.0" if macos_major >= 26 else "metal3.1" if macos_major >= 14 else "metal3.0" if macos_major >= 13 else "macos-metal2.0"
+
+    # llvm will create modules.timestamp in cache path and cache compilation of metal stdlib (250ms => 8ms compilation time)
+    # note that llvm won't necessarily create anything else here as apple has prebuilt versions of many standard libraries
+    params = f'-fno-fast-math -std={metal_version} --driver-mode=metal -x metal -fmodules-cache-path="{cache_dir}" -fno-caret-diagnostics'
+    # source blob has to be padded to multiple of 4 but at least one 'b\x00' should be added, params blob just has to be null terminated
+    src_padded, params_padded = src.encode() + b'\x00'*(round_up(len(src) + 1, 4) - len(src)), params.encode() + b'\x00'
+    request = struct.pack('<QQ', len(src_padded), len(params_padded)) + src_padded + params_padded
+    # The callback is actually not a callback but a block which is apple's non-standard extension to add closures to C.
+    # See https://clang.llvm.org/docs/Block-ABI-Apple.html#high-level for struct layout.
+    # Fields other than invoke are unused in this case so we can just use ctypes.byref with negative offset to invoke field, add blockptr as a first
+    # argument and pretend it's a normal callback
+    MetalCompiler.support.MTLCodeGenServiceBuildRequest(self.cgs, None, REQUEST_TYPE_COMPILE, request, len(request), ctypes.byref(callback, -0x10))
+    if isinstance(ret, Exception): raise ret
+    assert ret[:4] == b"MTLB" and ret[-4:] == b"ENDT", f"Invalid Metal library. {ret!r}"
+    return ret
+  def disassemble(self, lib:bytes):
+    with tempfile.NamedTemporaryFile(delete=True) as shader:
+      shader.write(lib)
+      shader.flush()
+      proc = subprocess.Popen(f"cd {pathlib.Path(__file__).parents[2]}/extra/disassemblers/applegpu && python3 compiler_explorer.py {shader.name}",
+                              stdout=subprocess.PIPE, shell=True, text=True, bufsize=1)
+      for line in unwrap(proc.stdout): print(line, end="")
+      ret = proc.wait()
+      if ret: print("Disassembler Error: Make sure you have https://github.com/dougallj/applegpu cloned to tinygrad/extra/disassemblers/applegpu")
+
+class MetalProgram:
+  def __init__(self, dev:IOSDevice, name:str, lib:bytes, **kwargs):
+    self.dev, self.name, self.lib = dev, name, lib
+    self.dev.q.append({"program":{"name": name, "lib":base64.b64encode(bytes(lib)).decode("ascii")}})
+    data = objc.dispatch_data_create(lib, len(lib), None, None)
+    self.library = self.dev.sysdevice.newLibraryWithData_error(data, ctypes.byref(error_lib:=metal.NSError().retained())).retained()
+    error_check(error_lib)
+    self.fxn = self.library.newFunctionWithName(to_ns_str(name)).retained()
+    descriptor = metal.MTLComputePipelineDescriptor.new()
+    descriptor.setComputeFunction(self.fxn)
+    descriptor.setSupportIndirectCommandBuffers(True)
+    self.pipeline_state = self.dev.sysdevice.newComputePipelineStateWithDescriptor_options_reflection_error(descriptor, metal.MTLPipelineOptionNone,
+      None, ctypes.byref(error_pipeline_creation:=metal.NSError().retained()))
+    error_check(error_pipeline_creation)
+    # cache these msg calls
+    self.max_total_threads: int = self.pipeline_state.maxTotalThreadsPerThreadgroup()
+
+  def __call__(self, *bufs, global_size:tuple[int,int,int]=(1,1,1), local_size:tuple[int,int,int]=(1,1,1), vals:tuple[int, ...]=(), wait=False, **kw):
+    self.dev.q.append({"call":{"name":self.name, "buffers":[b.num for b in bufs], "buffer_offsets":[b.offset for b in bufs],
+                       "vals":vals, "local_size":local_size, "global_size":global_size}})
+    if prod(local_size) > self.max_total_threads:
+      exec_width = self.pipeline_state.threadExecutionWidth()
+      memory_length = self.pipeline_state.staticThreadgroupMemoryLength()
+      raise RuntimeError(f"local size {local_size} bigger than {self.max_total_threads} with exec width {exec_width} memory length {memory_length}")
+    # commandBuffer/computeCommandEncoder returns +0 (autoreleased), so we can retain here.
+    # https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/MemoryMgmt/Articles/mmRules.html
+    command_buffer = self.dev.mtl_queue.commandBuffer().retained()
+    encoder = command_buffer.computeCommandEncoder().retained()
+    encoder.setComputePipelineState(self.pipeline_state)
+    for i,a in enumerate(bufs): encoder.setBuffer_offset_atIndex(a.buf, a.offset, i)
+    for i,a in enumerate(vals, start=len(bufs)): encoder.setBytes_length_atIndex(bytes(ctypes.c_int(a)), 4, i)
+    encoder.dispatchThreadgroups_threadsPerThreadgroup(metal.MTLSize(*global_size), metal.MTLSize(*local_size))
+    encoder.endEncoding()
+    command_buffer.setLabel(to_ns_str(self.name)) # TODO: is this always needed?
+    command_buffer.commit()
+    self.dev.mtl_buffers_in_flight.append(command_buffer)
+
+    # todo rory
+    '''
+    print({"call":{"name":self.name, "buffers":[b.num for b in bufs], "buffer_offsets":[b.offset for b in bufs],
+                       "vals":vals, "local_size":local_size, "global_size":global_size}})
+    
+    wait_check(command_buffer)
+
+    #print("bufs, vals =",bufs, vals)
+    for buf in bufs:
+      self.dev.q.append({"copyout": buf.num})
+      data = self.dev.send_q()
+      if bytes(memoryview(data)) != bytes(to_mv(buf.buf.contents(), buf.size + buf.offset)[buf.offset:]):
+        print("DIFFERENT BUFFER =",buf.num)
+        print(bytes(memoryview(data)), "\n\n", bytes(to_mv(buf.buf.contents(), buf.size + buf.offset)[buf.offset:]))
+      assert memoryview(data) == to_mv(buf.buf.contents(), buf.size + buf.offset)[buf.offset:]
+      print("worked!", bytes(memoryview(data))[:10])
+      self.dev.q = []
+    '''
+      
+    if wait:
+      wait_check(command_buffer)
+      return command_buffer.GPUEndTime() - command_buffer.GPUStartTime()
+
+class MetalBuffer:
+  def __init__(self, buf:metal.MTLBuffer, size:int, offset=0, num=0): self.buf, self.size, self.offset, self.num = buf, size, offset, num
+
+class MetalAllocator(LRUAllocator[IOSDevice]):
+  def _alloc(self, size:int, options) -> MetalBuffer:
+    self.dev.buf_num+=1
+    self.dev.q.append({"buff_alloc":{"num":self.dev.buf_num, "size":size}})
+    if options.external_ptr: return MetalBuffer(metal.MTLBuffer(options.external_ptr), size, num=self.dev.buf_num)
+
+    # Buffer is explicitly released in _free() rather than garbage collected via reference count
+    ret = self.dev.sysdevice.newBufferWithLength_options(size, metal.MTLResourceStorageModeShared)
+    ret.retain = False
+    if ret.value is None: raise MemoryError(f"Metal OOM while allocating {size=}")
+    return MetalBuffer(ret, size, num=self.dev.buf_num)
+  @suppress_finalizing
+  def _free(self, opaque:MetalBuffer, options):
+    if not options.external_ptr: opaque.buf.release()
+  def _transfer(self, dest:MetalBuffer, src:MetalBuffer, sz:int, src_dev:IOSDevice, dest_dev:IOSDevice):
+    dest_dev.synchronize()
+    src_command_buffer = src_dev.mtl_queue.commandBuffer().retained()
+    encoder = src_command_buffer.blitCommandEncoder().retained()
+    encoder.copyFromBuffer_sourceOffset_toBuffer_destinationOffset_size(src.buf, src.offset, dest.buf, dest.offset, sz)
+    encoder.endEncoding()
+    if src_dev != dest_dev:
+      src_command_buffer.encodeSignalEvent_value(ctypes.cast(src_dev.timeline_signal, metal.MTLEvent), src_dev.timeline_value)
+      dest_command_buffer = dest_dev.mtl_queue.commandBuffer().retained()
+      dest_command_buffer.encodeWaitForEvent_value(ctypes.cast(src_dev.timeline_signal, metal.MTLEvent), src_dev.timeline_value)
+      dest_command_buffer.commit()
+      dest_dev.mtl_buffers_in_flight.append(dest_command_buffer)
+      src_dev.timeline_value += 1
+    src_command_buffer.setLabel(to_ns_str(f"COPY {src_dev.device} -> {dest_dev.device}"))
+    src_command_buffer.commit()
+    src_dev.mtl_buffers_in_flight.append(src_command_buffer)
+    # Transfers currently synchronize the completion. Otherwise, copies can sometimes lead to incorrect values.
+    # There is no real metal multidevice support for now, so transfer is used only for tests.
+    src_dev.synchronize()
+  def _cp_mv(self, dst, src, prof_desc):
+    with cpu_profile(prof_desc, f"{self.dev.device}:COPY"): dst[:] = src
+  def _as_buffer(self, src:MetalBuffer) -> memoryview:
+    self.dev.synchronize()
+    return to_mv(src.buf.contents(), src.size + src.offset)[src.offset:]
+  def _copyin(self, dest:MetalBuffer, src:memoryview):
+    self.dev.q.append({"copyin": {"dest": dest.num, "len": len(src), "data": memoryview(src)}})
+    self._cp_mv(self._as_buffer(dest), src, "TINY -> METAL")
+  def _copyout(self, dest:memoryview, src:MetalBuffer):
+    self.dev.q.append({"copyout": src.num})
+    data = self.dev.send_q()
+    print(data, "actual =", self._as_buffer(src).tobytes())
+    self.dev.q = []
+    
+    #assert memoryview(data) == self._as_buffer(src)
+    self._cp_mv(dest, memoryview(data), "METAL -> TINY")
+    #self._cp_mv(dest, self._as_buffer(src), "METAL -> TINY")
+  #def _offset(self, buf:MetalBuffer, size:int, offset:int): return MetalBuffer(buf.buf, size, offset)

@@ -2,18 +2,12 @@ import  struct, functools, os
 from tinygrad.helpers import cpu_profile
 from tinygrad.device import Compiled, LRUAllocator
 from tinygrad.renderer.cstyle import MetalRenderer
-from tinygrad.runtime.autogen import metal
 import urllib, json, base64, urllib.request
 
 class IOSDevice(Compiled):
   def __init__(self, device:str):
     self.buf_num = 0
     self.q = []
-    self.sysdevice = metal.MTLCreateSystemDefaultDevice()
-    self.mtl_queue = self.sysdevice.newCommandQueueWithMaxCommandBufferCount(1024)
-    if self.mtl_queue is None: raise RuntimeError("Cannot allocate a new command queue")
-    self.mtl_buffers_in_flight: list[metal.MTLCommandBuffer] = []
-    self.timeline_signal = self.sysdevice.newSharedEvent()
     super().__init__(device, IOSAllocator(self), [MetalRenderer], functools.partial(MetalProgram, self), None)
 
   def send_q(self):

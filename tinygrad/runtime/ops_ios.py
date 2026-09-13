@@ -38,8 +38,8 @@ class MetalProgram:
 
   def __call__(self, *bufs, global_size:tuple[int,int,int]=(1,1,1), local_size:tuple[int,int,int]=(1,1,1), vals:tuple[int, ...]=(), wait=False, **kw):
     self.dev.q.append({"call":{"name":self.name, "buffers":[b.num for b in bufs], "buffer_offsets":[b.offset for b in bufs],
-                       "vals":vals, "local_size":local_size, "global_size":global_size}})
-    # todo, if wait for BEAM
+                       "vals":vals, "local_size":local_size, "global_size":global_size, "wait": wait}})
+    if wait: return float(self.dev.send_q().decode('ascii'))
 
 class IOSBuffer:
   def __init__(self, size:int, offset=0, num=0): self.size, self.offset, self.num = size, offset, num

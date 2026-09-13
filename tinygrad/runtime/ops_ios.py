@@ -38,7 +38,6 @@ class IOSDevice(Compiled):
     meta = json.dumps(metas).encode()
     body = struct.pack("<I", len(meta)) + meta + b"".join(blobs)
     self.q = []
-    
     req = urllib.request.Request("http://192.168.1.11:6667/batch", data=body,
                                 headers={"Content-Type": "application/octet-stream"}, method="POST")
     with urllib.request.urlopen(req, timeout=300) as resp: return resp.read()
@@ -69,14 +68,8 @@ class IOSAllocator(LRUAllocator[IOSDevice]):
     return MetalBuffer(ret, size, num=self.dev.buf_num)
   def _cp_mv(self, dst, src, prof_desc):
     with cpu_profile(prof_desc, f"{self.dev.device}:COPY"): dst[:] = src
-  def _as_buffer(self, src:MetalBuffer) -> memoryview:
-    self.dev.synchronize()
-    return to_mv(src.buf.contents(), src.size + src.offset)[src.offset:]
-  def _copyin(self, dest:MetalBuffer, src:memoryview):
-    self.dev.q.append({"copyin": {"dest": dest.num, "len": len(src), "data": memoryview(src)}})
-    self._cp_mv(self._as_buffer(dest), src, "TINY -> METAL")
+  def _copyin(self, dest:MetalBuffer, src:memoryview): self.dev.q.append({"copyin": {"dest": dest.num, "len": len(src), "data": memoryview(src)}})
   def _copyout(self, dest:memoryview, src:MetalBuffer):
     self.dev.q.append({"copyout": src.num})
     data = self.dev.send_q()
-    self.dev.q = []
     self._cp_mv(dest, memoryview(data), "METAL -> TINY")

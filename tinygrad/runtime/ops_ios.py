@@ -151,45 +151,7 @@ class MetalProgram:
   def __call__(self, *bufs, global_size:tuple[int,int,int]=(1,1,1), local_size:tuple[int,int,int]=(1,1,1), vals:tuple[int, ...]=(), wait=False, **kw):
     self.dev.q.append({"call":{"name":self.name, "buffers":[b.num for b in bufs], "buffer_offsets":[b.offset for b in bufs],
                        "vals":vals, "local_size":local_size, "global_size":global_size}})
-    if prod(local_size) > self.max_total_threads:
-      exec_width = self.pipeline_state.threadExecutionWidth()
-      memory_length = self.pipeline_state.staticThreadgroupMemoryLength()
-      raise RuntimeError(f"local size {local_size} bigger than {self.max_total_threads} with exec width {exec_width} memory length {memory_length}")
-    # commandBuffer/computeCommandEncoder returns +0 (autoreleased), so we can retain here.
-    # https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/MemoryMgmt/Articles/mmRules.html
-    command_buffer = self.dev.mtl_queue.commandBuffer().retained()
-    encoder = command_buffer.computeCommandEncoder().retained()
-    encoder.setComputePipelineState(self.pipeline_state)
-    for i,a in enumerate(bufs): encoder.setBuffer_offset_atIndex(a.buf, a.offset, i)
-    for i,a in enumerate(vals, start=len(bufs)): encoder.setBytes_length_atIndex(bytes(ctypes.c_int(a)), 4, i)
-    encoder.dispatchThreadgroups_threadsPerThreadgroup(metal.MTLSize(*global_size), metal.MTLSize(*local_size))
-    encoder.endEncoding()
-    command_buffer.setLabel(to_ns_str(self.name)) # TODO: is this always needed?
-    command_buffer.commit()
-    self.dev.mtl_buffers_in_flight.append(command_buffer)
-
-    # todo rory
-    '''
-    print({"call":{"name":self.name, "buffers":[b.num for b in bufs], "buffer_offsets":[b.offset for b in bufs],
-                       "vals":vals, "local_size":local_size, "global_size":global_size}})
-    
-    wait_check(command_buffer)
-
-    #print("bufs, vals =",bufs, vals)
-    for buf in bufs:
-      self.dev.q.append({"copyout": buf.num})
-      data = self.dev.send_q()
-      if bytes(memoryview(data)) != bytes(to_mv(buf.buf.contents(), buf.size + buf.offset)[buf.offset:]):
-        print("DIFFERENT BUFFER =",buf.num)
-        print(bytes(memoryview(data)), "\n\n", bytes(to_mv(buf.buf.contents(), buf.size + buf.offset)[buf.offset:]))
-      assert memoryview(data) == to_mv(buf.buf.contents(), buf.size + buf.offset)[buf.offset:]
-      print("worked!", bytes(memoryview(data))[:10])
-      self.dev.q = []
-    '''
-      
-    if wait:
-      wait_check(command_buffer)
-      return command_buffer.GPUEndTime() - command_buffer.GPUStartTime()
+    # todo, if wait for BEAM
 
 class MetalBuffer:
   def __init__(self, buf:metal.MTLBuffer, size:int, offset=0, num=0): self.buf, self.size, self.offset, self.num = buf, size, offset, num
@@ -238,10 +200,6 @@ class MetalAllocator(LRUAllocator[IOSDevice]):
   def _copyout(self, dest:memoryview, src:MetalBuffer):
     self.dev.q.append({"copyout": src.num})
     data = self.dev.send_q()
-    print(data, "actual =", self._as_buffer(src).tobytes())
     self.dev.q = []
-    
-    #assert memoryview(data) == self._as_buffer(src)
     self._cp_mv(dest, memoryview(data), "METAL -> TINY")
-    #self._cp_mv(dest, self._as_buffer(src), "METAL -> TINY")
   #def _offset(self, buf:MetalBuffer, size:int, offset:int): return MetalBuffer(buf.buf, size, offset)

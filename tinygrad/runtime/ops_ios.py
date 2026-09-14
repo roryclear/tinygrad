@@ -9,6 +9,7 @@ class IOSDevice(Compiled):
   def __init__(self, device:str):
     self.buf_num = 0
     self.q = []
+    self.first_call = True
     super().__init__(device, IOSAllocator(self), [MetalRenderer], functools.partial(MetalProgram, self), None)
 
   def send_q(self):
@@ -22,6 +23,7 @@ class IOSDevice(Compiled):
     meta = json.dumps(metas).encode()
     body = struct.pack("<I", len(meta)) + meta + b"".join(blobs)
     self.q = []
+    self.first_call = True
     assert os.environ.get("IP") is not None, "no IP address provided, use IP=(iOS IP)."
     ip = os.environ.get("IP")
     req = urllib.request.Request(f"http://{ip}/batch", data=body,
@@ -35,7 +37,8 @@ class MetalProgram:
 
   def __call__(self, *bufs, global_size:tuple[int,int,int]=(1,1,1), local_size:tuple[int,int,int]=(1,1,1), vals:tuple[int, ...]=(), wait=False, **kw):
     self.dev.q.append({"call":{"name":self.name, "buffers":[b.num for b in bufs], "buffer_offsets":[b.offset for b in bufs],
-                       "vals":vals, "local_size":local_size, "global_size":global_size, "wait": wait}})
+                       "vals":vals, "local_size":local_size, "global_size":global_size, "wait": wait, "benchmark_start": self.dev.first_call and os.environ.get("BENCHMARK") == "1", "benchmark_end": False}})
+    self.dev.first_call = False
     if wait: return float(self.dev.send_q().decode('ascii'))
 
 class IOSBuffer:
@@ -53,6 +56,10 @@ class IOSAllocator(LRUAllocator[IOSDevice]):
     self.dev.q.append({"copyin": {"dest": dest.num, "len": len(src), "data": memoryview(src)}})
     if os.environ.get("LAZY_COPYIN") != "1": self.dev.send_q()
   def _copyout(self, dest:memoryview, src:IOSBuffer):
+    if os.environ.get("BENCHMARK") == "1": # measure time to run a graph
+      self.dev.q[-1]["call"]["benchmark_end"] = True
+      print(f"time: {float( self.dev.send_q().decode('ascii'))}")
+
     self.dev.q.append({"copyout": src.num})
     data = self.dev.send_q()
     self._cp_mv(dest, memoryview(data), "METAL -> TINY")

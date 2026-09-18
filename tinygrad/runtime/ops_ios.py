@@ -10,6 +10,7 @@ class IOSDevice(Compiled):
     self.buf_num = 0
     self.q = []
     self.first_call = True
+    self.graph_num = 0
     super().__init__(device, IOSAllocator(self), [MetalRenderer], functools.partial(MetalProgram, self), None)
 
   def send_q(self):
@@ -22,6 +23,9 @@ class IOSDevice(Compiled):
         metas.append(op)
     meta = json.dumps(metas).encode()
     body = struct.pack("<I", len(meta)) + meta + b"".join(blobs)
+    if os.environ.get("EXPORT") == "1":
+      open(f"graph_{self.graph_num}.rc", "wb").write(body)
+    self.graph_num += 1
     self.q = []
     self.first_call = True
     assert os.environ.get("IP") is not None, "no IP address provided, use IP=(iOS IP)."
@@ -54,7 +58,7 @@ class IOSAllocator(LRUAllocator[IOSDevice]):
     with cpu_profile(prof_desc, f"{self.dev.device}:COPY"): dst[:] = src
   def _copyin(self, dest:IOSBuffer, src:memoryview):
     self.dev.q.append({"copyin": {"dest": dest.num, "len": len(src), "data": memoryview(src)}})
-    if os.environ.get("LAZY_COPYIN") != "1": self.dev.send_q()
+    if os.environ.get("LAZY_COPYIN") != "1" and os.environ.get("EXPORT") != "1": self.dev.send_q()
   def _copyout(self, dest:memoryview, src:IOSBuffer):
     if os.environ.get("BENCHMARK") == "1": # measure time to run a graph
       self.dev.q[-1]["call"]["benchmark_end"] = True

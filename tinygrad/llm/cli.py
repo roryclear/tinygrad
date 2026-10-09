@@ -122,9 +122,10 @@ models = {
   "olmoe": "https://huggingface.co/allenai/OLMoE-1B-7B-0924-Instruct-GGUF/resolve/main/olmoe-1b-7b-0924-instruct-q4_k_m.gguf",
   "moonlight": "https://huggingface.co/gabriellarson/Moonlight-16B-A3B-Instruct-GGUF/resolve/main/Moonlight-16B-A3B-Instruct-Q4_K_M.gguf",
   "glm-4.7-flash": "https://huggingface.co/unsloth/GLM-4.7-Flash-GGUF/resolve/main/GLM-4.7-Flash-Q4_K_M.gguf",
-  "qwen3-vl:2b":"https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct-GGUF/resolve/main/Qwen3VL-2B-Instruct-F16.gguf",
-  "qwen3-vl:4b":"https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct-GGUF/resolve/main/Qwen3VL-4B-Instruct-F16.gguf",
-  "qwen3-vl:8b":"https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF/resolve/main/Qwen3VL-8B-Instruct-F16.gguf", # untested, not enough memory
+  "qwen3-vl:2b": "https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct-GGUF/resolve/main/Qwen3VL-2B-Instruct-F16.gguf",
+  "qwen3-vl:4b": "https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct-GGUF/resolve/main/Qwen3VL-4B-Instruct-F16.gguf",
+  "qwen3-vl:8b": "https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF/resolve/main/Qwen3VL-8B-Instruct-F16.gguf", # untested, not enough memory
+  "qwen2.5-vl:4b": "https://huggingface.co/unsloth/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/Qwen2.5-VL-3B-Instruct-BF16.gguf",
 }
 
 class FallbackTemplate:
@@ -194,6 +195,14 @@ def main():
     from extra.models.qwen3vl import Qwen3VLVis
     from tinygrad import Tensor, dtypes, Variable
     model.vis = Qwen3VLVis(size="2B", tok=tok)
+    for _ in range(2):
+      model.vis.prefill(lang=model, image=Tensor.rand(*model.vis.res, 3).cast(dtypes.uint8), start_pos=Variable("pos", 0, model.max_context).bind(42))
+
+
+  if "qwen2.5-vl" in args.model:
+    from extra.models.qwen25vl import Qwen25VLVis
+    from tinygrad import Tensor, dtypes, Variable
+    model.vis = Qwen25VLVis(size="2B", tok=tok)
     for _ in range(2):
       model.vis.prefill(lang=model, image=Tensor.rand(*model.vis.res, 3).cast(dtypes.uint8), start_pos=Variable("pos", 0, model.max_context).bind(42))
 

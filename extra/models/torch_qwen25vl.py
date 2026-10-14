@@ -46,14 +46,15 @@ for shard_name in shards:
                 state[key[len("visual."):]] = f.get_tensor(key)
 
 missing, unexpected = vision.load_state_dict(state, strict=False)
-
-
 vision.eval()
 
-url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/pipeline-cat-chonk.jpeg"
-image = Image.open(requests.get(url, timeout=30, stream=True).raw).convert("RGB")
-inputs = processor.image_processor(images=image, return_tensors="pt")
-with torch.inference_mode(): outputs = vision(inputs["pixel_values"], grid_thw=inputs["image_grid_thw"])
-embeddings = outputs.pooler_output
-print("Embedding shape:", embeddings.shape)
-print("Embedding dtype:", embeddings.dtype)
+if __name__ == "__main__":
+  url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/pipeline-cat-chonk.jpeg"
+  image = Image.open(requests.get(url, timeout=30, stream=True).raw).convert("RGB")
+  inputs = processor.image_processor(images=image, return_tensors="pt")
+  with torch.inference_mode(): outputs = vision(inputs["pixel_values"], grid_thw=inputs["image_grid_thw"])
+  embeddings = outputs.pooler_output
+  print("Embedding shape:", embeddings.shape)
+  print("Embedding dtype:", embeddings.dtype)
+  print(embeddings)
+  

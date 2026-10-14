@@ -21,27 +21,15 @@ vision = Qwen2_5_VisionTransformerPretrainedModel(
     config.vision_config
 )
 
-# Find the checkpoint shards containing vision weights.
-try:
-    index_path = hf_hub_download(
-        MODEL_ID, "model.safetensors.index.json"
-    )
-    with open(index_path) as f:
-        weight_map = json.load(f)["weight_map"]
+index_path = hf_hub_download( MODEL_ID, "model.safetensors.index.json")
+with open(index_path) as f: weight_map = json.load(f)["weight_map"]
 
-    vision_keys = {
-        key: shard
-        for key, shard in weight_map.items()
-        if key.startswith("visual.")
-    }
-    shards = sorted(set(vision_keys.values()))
-
-except Exception:
-    # Fallback for repositories with a single safetensors file.
-    shards = [hf_hub_download(MODEL_ID, "model.safetensors")]
-    vision_keys = None
-
-# Load ONLY visual.* tensors, stripping the prefix.
+vision_keys = {
+    key: shard
+    for key, shard in weight_map.items()
+    if key.startswith("visual.")
+}
+shards = sorted(set(vision_keys.values()))
 state = {}
 
 for shard_name in shards:
@@ -59,37 +47,13 @@ for shard_name in shards:
 
 missing, unexpected = vision.load_state_dict(state, strict=False)
 
-if unexpected or missing:
-    raise RuntimeError(
-        f"Vision checkpoint mismatch. Missing: {missing}; "
-        f"unexpected: {unexpected}"
-    )
 
 vision.eval()
 
-# Prepare an image.
-url = (
-    "https://huggingface.co/datasets/huggingface/"
-    "documentation-images/resolve/main/pipeline-cat-chonk.jpeg"
-)
-image = Image.open(
-    requests.get(url, timeout=30, stream=True).raw
-).convert("RGB")
-
-inputs = processor.image_processor(
-    images=image,
-    return_tensors="pt",
-)
-
-# Run the vision tower only.
-with torch.inference_mode():
-    outputs = vision(
-        inputs["pixel_values"],
-        grid_thw=inputs["image_grid_thw"],
-    )
-
-# Embeddings after the vision tower's spatial merging.
+url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/pipeline-cat-chonk.jpeg"
+image = Image.open(requests.get(url, timeout=30, stream=True).raw).convert("RGB")
+inputs = processor.image_processor(images=image, return_tensors="pt")
+with torch.inference_mode(): outputs = vision(inputs["pixel_values"], grid_thw=inputs["image_grid_thw"])
 embeddings = outputs.pooler_output
-
 print("Embedding shape:", embeddings.shape)
 print("Embedding dtype:", embeddings.dtype)

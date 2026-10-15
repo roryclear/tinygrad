@@ -48,17 +48,17 @@ class Qwen25VLVis():
                 if key.startswith("visual."):
                     state[key[len("visual."):]] = f.get_tensor(key)
 
-    missing, unexpected = self.vision.load_state_dict(state, strict=False)
     self.vision.eval()
+
+  def __call__(self, image):
+    image = Image.open(requests.get(image, timeout=30, stream=True).raw).convert("RGB")  
+    inputs = self.processor.image_processor(images=image, return_tensors="pt")  
+    with torch.inference_mode(): outputs = qwen.vision(inputs["pixel_values"], grid_thw=inputs["image_grid_thw"])
+    embeddings = outputs.pooler_output
+    print("Embedding shape:", embeddings.shape)
+    print("Embedding dtype:", embeddings.dtype)
+    print(embeddings) 
 
 if __name__ == "__main__":
   qwen = Qwen25VLVis()
-  url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/pipeline-cat-chonk.jpeg"
-  image = Image.open(requests.get(url, timeout=30, stream=True).raw).convert("RGB")
-  inputs = qwen.processor.image_processor(images=image, return_tensors="pt")
-  with torch.inference_mode(): outputs = qwen.vision(inputs["pixel_values"], grid_thw=inputs["image_grid_thw"])
-  embeddings = outputs.pooler_output
-  print("Embedding shape:", embeddings.shape)
-  print("Embedding dtype:", embeddings.dtype)
-  print(embeddings)
-  
+  qwen(image="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/pipeline-cat-chonk.jpeg")

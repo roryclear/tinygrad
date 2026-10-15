@@ -117,7 +117,7 @@ class Qwen3VLVis():
     image_embeds = image_embeds.view(-1, self.feed_forward_length)
     image_embeds = self.mm[0](image_embeds).gelu()
     image_embeds = self.mm[2](image_embeds)
-    return image_embeds, hidden_states, deepstack_features
+    return image_embeds, deepstack_features
 
   def __call__(self, lang:Transformer, image:Tensor|bytes, start_pos:UOp.variable, end_turn:bool=False):
     if type(image) == bytes: image = cv2.cvtColor(cv2.imdecode(np.frombuffer(image, np.uint8), cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
@@ -162,7 +162,7 @@ class Qwen3VLVis():
     pixel_values = pixel_values.cast(dtypes.bfloat16)
 
     input_ids = Tensor.cat(self.prefix, Tensor.zeros(self.toks_per_img), self.suffix).unsqueeze(0).cast(dtypes.int)
-    image_embeds, hidden_states, deepstack_features = self.forward(pixel_values, [grid_h, grid_w])
+    image_embeds, deepstack_features = self.forward(pixel_values, [grid_h, grid_w])
     hidden_states = lang.token_embd(input_ids).cast(dtypes.float)
     hidden_states[:, self.prefix.shape[0]:-self.suffix.shape[0], :] = image_embeds.unsqueeze(0)
     

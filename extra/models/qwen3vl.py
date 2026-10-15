@@ -1,9 +1,8 @@
 from tinygrad import Tensor, TinyJit, dtypes, nn, Variable
 from tinygrad.llm.gguf import gguf_load
-from tinygrad.helpers import fetch, Context, DEBUG
+from tinygrad.helpers import fetch, DEBUG
 from tinygrad.nn.state import load_state_dict
-import argparse, json, typing, base64, pathlib, math
-#from tinygrad.llm.cli import SimpleTokenizer, LLMServer, Handler
+import json, typing, base64, pathlib, math
 from tinygrad.llm.model import Transformer
 from tinygrad.uop.ops import UOp, Ops
 import numpy as np
@@ -287,32 +286,3 @@ def DO_POST(self):
         "choices":[{"index":0, "message":{"role":"assistant","content":"".join(out)}, "finish_reason":finish_reason}]}).encode())
   else:
     raise RuntimeError(f"unhandled path {self.path}")
-
-if __name__ == "__main__":
-  # python3 examples/qwen3vl/qwen3vl.py --size={2B|4B}
-  
-  parser = argparse.ArgumentParser()
-  parser.add_argument("--max_context", type=int, default=4096, help="Max Context Length")
-  parser.add_argument("--size", type=str, default="2B", help="Model Size")
-  args = parser.parse_args()
-
-  model, kv = Transformer.from_gguf(fetch(f"https://huggingface.co/Qwen/Qwen3-VL-{args.size}-Instruct-GGUF/resolve/main/Qwen3VL-{args.size}-Instruct-F16.gguf"), args.max_context)
-  model_name = "Qwen3-VL"
-  file_sizes = [y.nbytes() for y in UOp.sink(*[x.uop for x in nn.state.get_parameters(model)]).toposort() if y.op is Ops.BUFFER]
-  print(f"using model \"{model_name}\" with {sum(file_sizes):,} bytes and {sum(x.numel() for x in nn.state.get_parameters(model)):,} params")
-
-  tok = SimpleTokenizer.from_gguf_kv(kv)
-
-  # warmup the JIT
-  with Context(DEBUG=max(DEBUG.value, 1)):
-    vis = Qwen3VLVis(size=args.size, tok=tok)
-    for _ in range(2):
-      list(zip(range(2), model.generate([0])))
-      vis.prefill(lang=model, image=Tensor.rand(*vis.res, 3).cast(dtypes.uint8), start_pos=Variable("pos", 0, model.max_context).bind(42))
-    model._cached_tokens = [] # warmup adds two toks
-
-  Handler.do_POST = DO_POST
-  Handler.do_GET = DO_GET
-  server = LLMServer(('', 8000), model, model_name, tok)
-  server.vis = vis
-  server.serve_forever()

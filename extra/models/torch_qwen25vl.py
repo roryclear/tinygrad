@@ -6,9 +6,7 @@ from PIL import Image
 from huggingface_hub import hf_hub_download
 from safetensors import safe_open
 from transformers import AutoConfig, AutoProcessor
-from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
-    Qwen2_5_VisionTransformerPretrainedModel,
-)
+from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import Qwen2_5_VisionTransformerPretrainedModel
 
 class Qwen25VLVis():
 
@@ -36,28 +34,24 @@ class Qwen25VLVis():
     state = {}
 
     for shard_name in shards:
-        shard_path = (
-            shard_name
-            if shard_name.endswith(".safetensors")
-            and "/" in shard_name
-            else hf_hub_download(MODEL_ID, shard_name)
-        )
+        shard_path = hf_hub_download(MODEL_ID, shard_name)
 
         with safe_open(shard_path, framework="pt", device="cpu") as f:
             for key in f.keys():
                 if key.startswith("visual."):
                     state[key[len("visual."):]] = f.get_tensor(key)
-
+    self.vision.load_state_dict(state, strict=False)
     self.vision.eval()
 
   def __call__(self, image):
     image = Image.open(requests.get(image, timeout=30, stream=True).raw).convert("RGB")  
     inputs = self.processor.image_processor(images=image, return_tensors="pt")  
-    with torch.inference_mode(): outputs = qwen.vision(inputs["pixel_values"], grid_thw=inputs["image_grid_thw"])
+    with torch.inference_mode(): outputs = self.vision(inputs["pixel_values"], grid_thw=inputs["image_grid_thw"])
     embeddings = outputs.pooler_output
     print("Embedding shape:", embeddings.shape)
     print("Embedding dtype:", embeddings.dtype)
-    print(embeddings) 
+    print(embeddings)
+    print(embeddings.sum().numpy())
 
 if __name__ == "__main__":
   qwen = Qwen25VLVis()

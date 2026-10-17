@@ -44,19 +44,7 @@ class Qwen25VLVis():
     self.vision.eval()
 
   def __call__(self, image):
-
-    with urllib.request.urlopen(image, timeout=30) as response:
-        image_bytes = np.frombuffer(response.read(), dtype=np.uint8)
-
-    # Decode with OpenCV (BGR format)
-    image = cv2.imdecode(image_bytes, cv2.IMREAD_COLOR)
-
-    if image is None:
-        raise ValueError("Failed to decode image from URL")
-
-    # Convert BGR -> RGB for the Qwen processor
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
+    image = cv2.cvtColor(cv2.imdecode(image, cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
     inputs = self.processor.image_processor(images=image, return_tensors="pt")  
     with torch.inference_mode(): outputs = self.vision(inputs["pixel_values"], grid_thw=inputs["image_grid_thw"])
     embeddings = outputs.pooler_output
@@ -69,4 +57,6 @@ class Qwen25VLVis():
 
 if __name__ == "__main__":
   qwen = Qwen25VLVis()
-  qwen(image="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/pipeline-cat-chonk.jpeg")
+  url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/pipeline-cat-chonk.jpeg"
+  with urllib.request.urlopen(url, timeout=30) as response: image = np.frombuffer(response.read(), dtype=np.uint8)
+  qwen(image=image)

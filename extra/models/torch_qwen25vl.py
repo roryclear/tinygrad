@@ -10,7 +10,7 @@ from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import Qwen2_5_VisionTra
 from tinygrad import Tensor
 
 class Qwen25VLVis():
-  def __init__(self, tok=None, res:list=[640, 640]):
+  def __init__(self, tok=None, res:list=[560, 560]): # res is 20x toks_per_img like qwen3
     self.res = res
     self.tok = tok
     self.toks_per_img = (self.res[0] * self.res[1]) // (28*28) # 28x28 tokens per pixel https://www.alibabacloud.com/help/en/model-studio/vision
@@ -70,8 +70,7 @@ class Qwen25VLVis():
     print("Embedding dtype:", embeddings.dtype)
     print(embeddings)
     print(embeddings.sum().numpy())
-    assert embeddings.sum().numpy() == -14723.026
-
+    assert embeddings.sum().numpy() == -12742.492
     return embeddings
 
   def prefill(self, lang=None, image=None, start_pos=None):

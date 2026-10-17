@@ -7,10 +7,13 @@ from huggingface_hub import hf_hub_download
 from safetensors import safe_open
 from transformers import AutoConfig, AutoProcessor
 from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import Qwen2_5_VisionTransformerPretrainedModel
+from tinygrad import Tensor
 
 class Qwen25VLVis():
-
-  def __init__(self):
+  def __init__(self, tok=None, res:list=[640, 640]):
+    self.res = res
+    self.tok = tok
+    self.toks_per_img = (self.res[0] * self.res[1]) // (28*28) # 28x28 tokens per pixel https://www.alibabacloud.com/help/en/model-studio/vision
     MODEL_ID = "Qwen/Qwen2.5-VL-3B-Instruct"
 
     # Load configuration and image preprocessing only.
@@ -43,7 +46,12 @@ class Qwen25VLVis():
     self.vision.load_state_dict(state, strict=False)
     self.vision.eval()
 
-  def __call__(self, image):
+    if self.tok: # todo
+      self.prefix = Tensor(self.tok.encode("<|im_start|>user\n<|vision_start|>"))
+      self.suffix = Tensor(self.tok.encode("<|vision_end|>\n<|im_end|>\n"))
+
+  def __call__(self, lang=None, image=None, start_pos=None, end_turn=False):
+    if isinstance(image, (bytes, bytearray)): image = np.frombuffer(image, dtype=np.uint8)
     image = cv2.cvtColor(cv2.imdecode(image, cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
     inputs = self.processor.image_processor(images=image, return_tensors="pt")  
     with torch.inference_mode(): outputs = self.vision(inputs["pixel_values"], grid_thw=inputs["image_grid_thw"])
@@ -53,6 +61,12 @@ class Qwen25VLVis():
     print(embeddings)
     print(embeddings.sum().numpy())
     assert embeddings.sum().numpy() == -22122.2
+
+    return embeddings
+
+  def prefill(self, lang=None, image=None, start_pos=None):
+    image_embeds = self.foward(image=image)
+    if lang is not None: print("RORY HERE LANG")
 
 
 if __name__ == "__main__":

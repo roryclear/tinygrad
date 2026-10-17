@@ -200,11 +200,10 @@ def main():
 
 
   if "qwen2.5-vl" in args.model:
-    from extra.models.qwen25vl import Qwen25VLVis
+    from extra.models.torch_qwen25vl import Qwen25VLVis
     from tinygrad import Tensor, dtypes, Variable
-    model.vis = Qwen25VLVis(size="2B", tok=tok)
-    for _ in range(2):
-      model.vis.prefill(lang=model, image=Tensor.rand(*model.vis.res, 3).cast(dtypes.uint8), start_pos=Variable("pos", 0, model.max_context).bind(42))
+    model.vis = Qwen25VLVis(tok=tok)
+    # no prefil yet
 
   # use the model's chat template if jinja2 is available (enables model-specific formatting)
   template: jinja2.Template|FallbackTemplate = FallbackTemplate(tok)

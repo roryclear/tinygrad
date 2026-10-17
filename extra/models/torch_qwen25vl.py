@@ -53,6 +53,11 @@ class Qwen25VLVis():
   def __call__(self, lang=None, image=None, start_pos=None, end_turn=False):
     if isinstance(image, (bytes, bytearray)): image = np.frombuffer(image, dtype=np.uint8)
     image = cv2.cvtColor(cv2.imdecode(image, cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
+    if image.shape[:2] != self.res:
+      target_h, target_w = self.res[:2]
+      s = min(target_w / image.shape[1], target_h / image.shape[0])
+      r = cv2.resize(image, (int(image.shape[1] * s), int(image.shape[0] * s)))
+      image = cv2.copyMakeBorder(r, (target_h - r.shape[0]) // 2, target_h - r.shape[0] - (target_h - r.shape[0]) // 2, (target_w - r.shape[1]) // 2, target_w - r.shape[1] - (target_w - r.shape[1]) // 2, cv2.BORDER_CONSTANT, value=0)
     inputs = self.processor.image_processor(images=image, return_tensors="pt")  
     with torch.inference_mode(): outputs = self.vision(inputs["pixel_values"], grid_thw=inputs["image_grid_thw"])
     embeddings = outputs.pooler_output
@@ -60,7 +65,7 @@ class Qwen25VLVis():
     print("Embedding dtype:", embeddings.dtype)
     print(embeddings)
     print(embeddings.sum().numpy())
-    assert embeddings.sum().numpy() == -22122.2
+    assert embeddings.sum().numpy() == -14723.026
 
     return embeddings
 

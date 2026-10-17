@@ -51,7 +51,12 @@ class Qwen25VLVis():
       self.suffix = Tensor(self.tok.encode("<|vision_end|>\n<|im_end|>\n"))
 
   def __call__(self, lang=None, image=None, start_pos=None, end_turn=False):
-    if isinstance(image, (bytes, bytearray)): image = np.frombuffer(image, dtype=np.uint8)
+    #if isinstance(image, (bytes, bytearray)): image = np.frombuffer(image, dtype=np.uint8)
+
+    # todo remove!
+    url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/pipeline-cat-chonk.jpeg"
+    with urllib.request.urlopen(url, timeout=30) as response: image = np.frombuffer(response.read(), dtype=np.uint8)
+
     image = cv2.cvtColor(cv2.imdecode(image, cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
     if image.shape[:2] != self.res:
       target_h, target_w = self.res[:2]

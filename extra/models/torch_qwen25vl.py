@@ -67,13 +67,11 @@ class Qwen25VLVis():
     input_ids = Tensor.cat(self.prefix, Tensor.zeros(self.toks_per_img), self.suffix).unsqueeze(0).cast(dtypes.int)
     hidden_states = lang.token_embd(input_ids).cast(dtypes.float)
     inputs = self.processor.image_processor(images=image, return_tensors="pt")
-    with torch.inference_mode(): outputs = self.vision(inputs["pixel_values"], grid_thw=inputs["image_grid_thw"])
-    embeddings = outputs.pooler_output
+    embeddings = self.vision(inputs["pixel_values"], grid_thw=inputs["image_grid_thw"]).pooler_output
     embeddings = Tensor(embeddings.detach().numpy())
     hidden_states[:, self.prefix.shape[0]:-self.suffix.shape[0], :] = embeddings.unsqueeze(0)
 
     for i in range(len(lang.blk)): hidden_states = lang.blk[i](hidden_states, start_pos=start_pos)
-
     hidden_states.realize()
     
 if __name__ == "__main__": 

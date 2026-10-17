@@ -7,7 +7,7 @@ from huggingface_hub import hf_hub_download
 from safetensors import safe_open
 from transformers import AutoConfig, AutoProcessor
 from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import Qwen2_5_VisionTransformerPretrainedModel
-from tinygrad import Tensor
+from tinygrad import Tensor, dtypes
 
 class Qwen25VLVis():
   def __init__(self, tok=None, res:list=[560, 560]): # res is 20x toks_per_img like qwen3
@@ -63,7 +63,12 @@ class Qwen25VLVis():
       s = min(target_w / image.shape[1], target_h / image.shape[0])
       r = cv2.resize(image, (int(image.shape[1] * s), int(image.shape[0] * s)))
       image = cv2.copyMakeBorder(r, (target_h - r.shape[0]) // 2, target_h - r.shape[0] - (target_h - r.shape[0]) // 2, (target_w - r.shape[1]) // 2, target_w - r.shape[1] - (target_w - r.shape[1]) // 2, cv2.BORDER_CONSTANT, value=0)
-    inputs = self.processor.image_processor(images=image, return_tensors="pt")  
+    self.prefill(lang=lang, image=image, start_pos=start_pos)
+
+  def prefill(self, lang=None, image=None, start_pos=None):
+    input_ids = Tensor.cat(self.prefix, Tensor.zeros(self.toks_per_img), self.suffix).unsqueeze(0).cast(dtypes.int)
+    hidden_states = lang.token_embd(input_ids).cast(dtypes.float)
+    inputs = self.processor.image_processor(images=image, return_tensors="pt")
     with torch.inference_mode(): outputs = self.vision(inputs["pixel_values"], grid_thw=inputs["image_grid_thw"])
     embeddings = outputs.pooler_output
     print("Embedding shape:", embeddings.shape)
@@ -71,14 +76,8 @@ class Qwen25VLVis():
     print(embeddings)
     print(embeddings.sum().numpy())
     assert embeddings.sum().numpy() == -12742.492
-    return embeddings
-
-  def prefill(self, lang=None, image=None, start_pos=None):
-    image_embeds = self.foward(image=image)
-    if lang is not None: print("RORY HERE LANG")
-
-
-if __name__ == "__main__":
+    
+if __name__ == "__main__": 
   qwen = Qwen25VLVis()
   url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/pipeline-cat-chonk.jpeg"
   with urllib.request.urlopen(url, timeout=30) as response: image = np.frombuffer(response.read(), dtype=np.uint8)

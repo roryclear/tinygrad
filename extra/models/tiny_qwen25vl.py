@@ -9,9 +9,8 @@ from transformers import AutoConfig
 from transformers.models.qwen2_vl.modeling_qwen2_vl import Qwen2VLPreTrainedModel, TransformersKwargs, PatchEmbed
 from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import Qwen2_5_VisionTransformerPretrainedModel, Qwen2_5_VLVisionRotaryEmbedding, Qwen2_5_VLVisionBlock, Qwen2_5_VLPatchMerger
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessor
-from transformers.utils.generic import merge_with_config_defaults, get_max_seqlen
+from transformers.utils.generic import get_max_seqlen
 from transformers.modeling_outputs import BaseModelOutputWithPooling
-from transformers.utils.output_capturing import capture_outputs
 from transformers.processing_utils import Unpack
 from transformers.vision_utils import get_vision_position_ids, get_vision_window_index, get_vision_attention_seqlens
 from tinygrad import Tensor, dtypes
@@ -66,8 +65,6 @@ class Qwen2_5_VisionTransformerPretrainedModel(Qwen2_5_VLPreTrainedModel):
         input_tensor = input_tensor.reshape(seq_len, -1)
         return input_tensor
 
-    @merge_with_config_defaults
-    @capture_outputs
     def forward(
         self, hidden_states: torch.Tensor, grid_thw: torch.Tensor, **kwargs: Unpack[TransformersKwargs]
     ):

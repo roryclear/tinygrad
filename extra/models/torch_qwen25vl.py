@@ -78,4 +78,16 @@ if __name__ == "__main__":
   qwen = Qwen25VLVis()
   url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/pipeline-cat-chonk.jpeg"
   with urllib.request.urlopen(url, timeout=30) as response: image = np.frombuffer(response.read(), dtype=np.uint8)
-  qwen(image=image)
+  image = cv2.cvtColor(cv2.imdecode(image, cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
+
+  target_h, target_w = 560, 560
+  s = min(target_w / image.shape[1], target_h / image.shape[0])
+  r = cv2.resize(image, (int(image.shape[1] * s), int(image.shape[0] * s)))
+  image = cv2.copyMakeBorder(r, (target_h - r.shape[0]) // 2, target_h - r.shape[0] - (target_h - r.shape[0]) // 2, (target_w - r.shape[1]) // 2, target_w - r.shape[1] - (target_w - r.shape[1]) // 2, cv2.BORDER_CONSTANT, value=0)
+
+  inputs = qwen.processor.image_processor(images=image, return_tensors="pt")
+  embeddings = qwen.vision(inputs["pixel_values"], grid_thw=inputs["image_grid_thw"]).pooler_output
+  print(embeddings, embeddings.sum().item())
+  np.testing.assert_allclose(embeddings.sum().item(), -12742.4921875)
+  print("done")
+

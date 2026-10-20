@@ -6,7 +6,7 @@ import numpy as np
 from huggingface_hub import hf_hub_download
 from safetensors import safe_open
 from transformers import AutoConfig
-from transformers.models.qwen2_vl.modeling_qwen2_vl import Qwen2VLPreTrainedModel, PatchEmbed
+from transformers.models.qwen2_vl.modeling_qwen2_vl import Qwen2VLPreTrainedModel
 from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import Qwen2_5_VisionTransformerPretrainedModel, Qwen2_5_VLVisionRotaryEmbedding, Qwen2_5_VLVisionBlock, Qwen2_5_VLPatchMerger
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessor
 from tinygrad import Tensor, dtypes
@@ -115,6 +115,31 @@ def get_vision_attention_seqlens(
     return cu_seqlens, max_seqlen
 
 def get_max_seqlen(cu_seqlens: torch.Tensor): return (cu_seqlens[1:] - cu_seqlens[:-1]).max().item()
+
+class PatchEmbed(nn.Module):
+    def __init__(
+        self,
+        patch_size: int | list[int] | tuple[int, int] = 14,
+        temporal_patch_size: int | list[int] | tuple[int, int] = 2,
+        in_channels: int = 3,
+        embed_dim: int = 1152,
+    ) -> None:
+        super().__init__()
+        self.patch_size = patch_size
+        self.temporal_patch_size = temporal_patch_size
+        self.in_channels = in_channels
+        self.embed_dim = embed_dim
+
+        kernel_size = [temporal_patch_size, patch_size, patch_size]
+        self.proj = nn.Conv3d(in_channels, embed_dim, kernel_size=kernel_size, stride=kernel_size, bias=False)
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        target_dtype = self.proj.weight.dtype
+        hidden_states = hidden_states.view(
+            -1, self.in_channels, self.temporal_patch_size, self.patch_size, self.patch_size
+        )
+        hidden_states = self.proj(hidden_states.to(dtype=target_dtype)).view(-1, self.embed_dim)
+        return hidden_states
 
 class Qwen2_5_VisionTransformerPretrainedModel(Qwen2VLPreTrainedModel):
     config: Any

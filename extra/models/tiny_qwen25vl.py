@@ -10,11 +10,41 @@ from transformers.models.qwen2_vl.modeling_qwen2_vl import Qwen2VLPreTrainedMode
 from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import Qwen2_5_VisionTransformerPretrainedModel, Qwen2_5_VLVisionRotaryEmbedding, Qwen2_5_VLVisionBlock, Qwen2_5_VLPatchMerger
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessor
 from transformers.modeling_outputs import BaseModelOutputWithPooling
-from transformers.vision_utils import get_vision_position_ids
 from tinygrad import Tensor, dtypes
 from typing import Any
 import torch.nn as nn
 import torch.nn.functional as F
+
+def get_vision_position_ids(
+    grid_thw: torch.Tensor,
+    spatial_merge_size: int | torch.Tensor,
+    include_temporal: bool = False,
+    kwargs: dict | None = None,
+) -> torch.Tensor:
+    if kwargs is not None and (position_ids := kwargs.pop("position_ids", None)) is not None:
+        return position_ids
+
+    device = grid_thw.device
+    if isinstance(spatial_merge_size, int):
+        spatial_merge_size = torch.tensor([spatial_merge_size], device=device).expand(len(grid_thw))
+
+    position_ids = []
+    for (t, h, w), merge_size in zip(grid_thw.tolist(), spatial_merge_size.tolist()):
+        hpos_ids, wpos_ids = torch.meshgrid(
+            torch.arange(h, device=device),
+            torch.arange(w, device=device),
+            indexing="ij",
+        )
+        block_shape = (h // merge_size, merge_size, w // merge_size, merge_size)
+        hpos_ids = hpos_ids.reshape(block_shape).transpose(1, 2).flatten()
+        wpos_ids = wpos_ids.reshape(block_shape).transpose(1, 2).flatten()
+        if include_temporal:
+            tpos_ids = torch.arange(t, device=device).repeat_interleave(h * w)
+            position_ids.append(torch.stack([tpos_ids, hpos_ids.repeat(t), wpos_ids.repeat(t)], dim=-1))
+        else:
+            position_ids.append(torch.stack([hpos_ids, wpos_ids], dim=-1).repeat(t, 1))
+
+    return torch.cat(position_ids, dim=0)
 
 def get_vision_window_index(
     grid_thw: torch.Tensor,

@@ -9,12 +9,13 @@ from transformers import AutoConfig
 from transformers.models.qwen2_vl.modeling_qwen2_vl import Qwen2VLPreTrainedModel, PatchEmbed
 from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import Qwen2_5_VisionTransformerPretrainedModel, Qwen2_5_VLVisionRotaryEmbedding, Qwen2_5_VLVisionBlock, Qwen2_5_VLPatchMerger
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessor
-from transformers.utils.generic import get_max_seqlen
 from transformers.modeling_outputs import BaseModelOutputWithPooling
 from transformers.vision_utils import get_vision_position_ids, get_vision_window_index, get_vision_attention_seqlens
 from tinygrad import Tensor, dtypes
 from typing import Any
 import torch.nn as nn
+
+def get_max_seqlen(cu_seqlens: torch.Tensor): return (cu_seqlens[1:] - cu_seqlens[:-1]).max().item()
 
 class Qwen2_5_VisionTransformerPretrainedModel(Qwen2VLPreTrainedModel):
     config: Any
@@ -79,9 +80,7 @@ class Qwen2_5_VisionTransformerPretrainedModel(Qwen2VLPreTrainedModel):
             patch_size=self.patch_size,
             kwargs=kwargs,
         )
-        max_window_seqlen = get_max_seqlen(
-            cu_window_seqlens, self.config, kwargs=kwargs, kwarg_name="max_window_seqlen"
-        )
+        max_window_seqlen = get_max_seqlen(cu_window_seqlens)
 
         hidden_states = self.patch_embed(hidden_states)
 

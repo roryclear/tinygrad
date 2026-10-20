@@ -10,10 +10,28 @@ from transformers.models.qwen2_vl.modeling_qwen2_vl import Qwen2VLPreTrainedMode
 from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import Qwen2_5_VisionTransformerPretrainedModel, Qwen2_5_VLVisionRotaryEmbedding, Qwen2_5_VLVisionBlock, Qwen2_5_VLPatchMerger
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessor
 from transformers.modeling_outputs import BaseModelOutputWithPooling
-from transformers.vision_utils import get_vision_position_ids, get_vision_window_index, get_vision_attention_seqlens
+from transformers.vision_utils import get_vision_position_ids, get_vision_window_index
 from tinygrad import Tensor, dtypes
 from typing import Any
 import torch.nn as nn
+import torch.nn.functional as F
+
+def get_vision_cu_seqlens(
+    grid_thw: torch.Tensor, merge_temporal: bool = False, kwargs: dict | None = None
+) -> torch.Tensor:
+    dtype = torch.int32
+    seqlens = torch.repeat_interleave(grid_thw[:, 1] * grid_thw[:, 2], grid_thw[:, 0])
+    return F.pad(seqlens.cumsum(dim=0, dtype=dtype), (1, 0), value=0)
+
+def get_vision_attention_seqlens(
+    grid_thw: torch.Tensor,
+    config: Any,
+    merge_temporal: bool = False,
+    kwargs: dict | None = None,
+) -> tuple[torch.Tensor, int | None]:
+    cu_seqlens = get_vision_cu_seqlens(grid_thw, merge_temporal=merge_temporal, kwargs=kwargs)
+    max_seqlen = get_max_seqlen(cu_seqlens)
+    return cu_seqlens, max_seqlen
 
 def get_max_seqlen(cu_seqlens: torch.Tensor): return (cu_seqlens[1:] - cu_seqlens[:-1]).max().item()
 

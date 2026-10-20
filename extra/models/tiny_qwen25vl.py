@@ -9,7 +9,7 @@ from transformers import AutoConfig
 from transformers.models.qwen2_vl.modeling_qwen2_vl import Qwen2VLPreTrainedModel, PatchEmbed
 from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import Qwen2_5_VisionTransformerPretrainedModel, Qwen2_5_VLVisionRotaryEmbedding, Qwen2_5_VLVisionBlock, Qwen2_5_VLPatchMerger
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessor
-from transformers.modeling_outputs import BaseModelOutputWithPooling
+from transformers.utils import ModelOutput
 from tinygrad import Tensor, dtypes
 from typing import Any
 import torch.nn as nn
@@ -207,7 +207,7 @@ class Qwen2_5_VisionTransformerPretrainedModel(Qwen2VLPreTrainedModel):
         merged_hidden_states = self.merger(hidden_states)
         merged_hidden_states = merged_hidden_states[reverse_indices, :]
 
-        return BaseModelOutputWithPooling(
+        return ModelOutput(
             last_hidden_state=hidden_states,
             pooler_output=merged_hidden_states,
         )

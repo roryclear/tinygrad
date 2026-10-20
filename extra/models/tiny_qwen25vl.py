@@ -6,12 +6,11 @@ import numpy as np
 from huggingface_hub import hf_hub_download
 from safetensors import safe_open
 from transformers import AutoConfig
-from transformers.models.qwen2_vl.modeling_qwen2_vl import Qwen2VLPreTrainedModel, TransformersKwargs, PatchEmbed
+from transformers.models.qwen2_vl.modeling_qwen2_vl import Qwen2VLPreTrainedModel, PatchEmbed
 from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import Qwen2_5_VisionTransformerPretrainedModel, Qwen2_5_VLVisionRotaryEmbedding, Qwen2_5_VLVisionBlock, Qwen2_5_VLPatchMerger
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessor
 from transformers.utils.generic import get_max_seqlen
 from transformers.modeling_outputs import BaseModelOutputWithPooling
-from transformers.processing_utils import Unpack
 from transformers.vision_utils import get_vision_position_ids, get_vision_window_index, get_vision_attention_seqlens
 from tinygrad import Tensor, dtypes
 from typing import Any
@@ -60,8 +59,7 @@ class Qwen2_5_VisionTransformerPretrainedModel(Qwen2VLPreTrainedModel):
         return input_tensor
 
     def forward(
-        self, hidden_states: torch.Tensor, grid_thw: torch.Tensor, **kwargs: Unpack[TransformersKwargs]
-    ):
+        self, hidden_states: torch.Tensor, grid_thw: torch.Tensor, **kwargs):
         """
         Args:
             hidden_states (`torch.Tensor` of shape `(seq_len, hidden_size)`):

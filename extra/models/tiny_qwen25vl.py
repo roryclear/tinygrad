@@ -6,9 +6,128 @@ import numpy as np
 from huggingface_hub import hf_hub_download
 from safetensors import safe_open
 from transformers import AutoConfig
-from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import Qwen2_5_VisionTransformerPretrainedModel
+from transformers.models.qwen2_vl.modeling_qwen2_vl import Qwen2VLPreTrainedModel, TransformersKwargs, PatchEmbed
+from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import Qwen2_5_VisionTransformerPretrainedModel, Qwen2_5_VLVisionRotaryEmbedding, Qwen2_5_VLVisionBlock, Qwen2_5_VLPatchMerger
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessor
+from transformers.utils.generic import merge_with_config_defaults, get_max_seqlen
+from transformers.modeling_outputs import BaseModelOutputWithPooling
+from transformers.utils.output_capturing import capture_outputs
+from transformers.processing_utils import Unpack
+from transformers.vision_utils import get_vision_position_ids, get_vision_window_index, get_vision_attention_seqlens
 from tinygrad import Tensor, dtypes
+from typing import Any
+import torch.nn as nn
+
+class Qwen2_5_VLPreTrainedModel(Qwen2VLPreTrainedModel):
+    pass
+
+class Qwen2_5_VisionPatchEmbed(PatchEmbed):
+    pass
+
+class Qwen2_5_VisionTransformerPretrainedModel(Qwen2_5_VLPreTrainedModel):
+    config: Any
+    _no_split_modules = ["Qwen2_5_VLVisionBlock"]
+    _input_embed_layer = "patch_embed"
+    _can_record_outputs = {
+        "hidden_states": Any,
+        "attentions": Any,
+    }
+
+    def __init__(self, config, *inputs, **kwargs) -> None:
+        super().__init__(config, *inputs, **kwargs)
+        self.spatial_merge_size = config.spatial_merge_size
+        self.patch_size = config.patch_size
+        self.fullatt_block_indexes = config.fullatt_block_indexes
+        self.window_size = config.window_size
+        self.spatial_merge_unit = self.spatial_merge_size * self.spatial_merge_size
+
+        self.patch_embed = Qwen2_5_VisionPatchEmbed(
+            patch_size=config.patch_size,
+            temporal_patch_size=config.temporal_patch_size,
+            in_channels=config.in_channels,
+            embed_dim=config.hidden_size,
+        )
+
+        self.rotary_pos_emb = Qwen2_5_VLVisionRotaryEmbedding(config)
+
+        self.blocks = nn.ModuleList([Qwen2_5_VLVisionBlock(config) for _ in range(config.depth)])
+        self.merger = Qwen2_5_VLPatchMerger(
+            dim=config.out_hidden_size,
+            context_dim=config.hidden_size,
+            spatial_merge_size=config.spatial_merge_size,
+        )
+        self.gradient_checkpointing = False
+
+        self.post_init()
+
+    def permute_input_for_window_attn(self, input_tensor: torch.Tensor, window_index: torch.Tensor, seq_len: int):
+        input_tensor = input_tensor.reshape(seq_len // self.spatial_merge_unit, self.spatial_merge_unit, -1)
+        input_tensor = input_tensor[window_index, :, :]
+        input_tensor = input_tensor.reshape(seq_len, -1)
+        return input_tensor
+
+    @merge_with_config_defaults
+    @capture_outputs
+    def forward(
+        self, hidden_states: torch.Tensor, grid_thw: torch.Tensor, **kwargs: Unpack[TransformersKwargs]
+    ):
+        """
+        Args:
+            hidden_states (`torch.Tensor` of shape `(seq_len, hidden_size)`):
+                The final hidden states of the model.
+            grid_thw (`torch.Tensor` of shape `(num_images_or_videos, 3)`):
+                The temporal, height and width of feature shape of each image in LLM.
+
+        Returns:
+            `torch.Tensor`: hidden_states.
+        """
+        position_ids = get_vision_position_ids(grid_thw, self.spatial_merge_size, kwargs=kwargs)
+        cu_seqlens, max_seqlen = get_vision_attention_seqlens(grid_thw, self.config, kwargs=kwargs)
+        window_index, cu_window_seqlens = get_vision_window_index(
+            grid_thw,
+            spatial_merge_size=self.spatial_merge_size,
+            window_size=self.window_size,
+            patch_size=self.patch_size,
+            kwargs=kwargs,
+        )
+        max_window_seqlen = get_max_seqlen(
+            cu_window_seqlens, self.config, kwargs=kwargs, kwarg_name="max_window_seqlen"
+        )
+
+        hidden_states = self.patch_embed(hidden_states)
+
+        seq_len, _ = hidden_states.size()
+        hidden_states = self.permute_input_for_window_attn(hidden_states, window_index, seq_len=seq_len)
+
+        position_embeddings = self.rotary_pos_emb(hidden_states, position_ids)
+        position_embeddings = tuple(
+            self.permute_input_for_window_attn(freq, window_index, seq_len=seq_len) for freq in position_embeddings
+        )
+
+        for layer_num, blk in enumerate(self.blocks):
+            if layer_num in self.fullatt_block_indexes:
+                cu_seqlens_now = cu_seqlens
+                max_seqlen_now = max_seqlen
+            else:
+                cu_seqlens_now = cu_window_seqlens
+                max_seqlen_now = max_window_seqlen
+
+            hidden_states = blk(
+                hidden_states,
+                cu_seqlens=cu_seqlens_now,
+                max_seqlen=max_seqlen_now,
+                position_embeddings=position_embeddings,
+                **kwargs,
+            )
+
+        reverse_indices = torch.argsort(window_index)
+        merged_hidden_states = self.merger(hidden_states)
+        merged_hidden_states = merged_hidden_states[reverse_indices, :]
+
+        return BaseModelOutputWithPooling(
+            last_hidden_state=hidden_states,
+            pooler_output=merged_hidden_states,
+        )
 
 class Qwen25VLVis():
   def __init__(self, tok=None, res:list=[560, 560]): # res is 20x toks_per_img like qwen3
@@ -17,7 +136,6 @@ class Qwen25VLVis():
     self.toks_per_img = (self.res[0] * self.res[1]) // (28*28) # 28x28 tokens per pixel https://www.alibabacloud.com/help/en/model-studio/vision
     MODEL_ID = "Qwen/Qwen2.5-VL-3B-Instruct"
 
-    # Load configuration and image preprocessing only.
     config = AutoConfig.from_pretrained(MODEL_ID)
     self.image_processor = Qwen2VLImageProcessor()
 

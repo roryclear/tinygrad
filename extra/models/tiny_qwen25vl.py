@@ -9,11 +9,15 @@ from transformers import AutoConfig
 from transformers.models.qwen2_vl.modeling_qwen2_vl import Qwen2VLPreTrainedModel, PatchEmbed
 from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import Qwen2_5_VisionTransformerPretrainedModel, Qwen2_5_VLVisionRotaryEmbedding, Qwen2_5_VLVisionBlock, Qwen2_5_VLPatchMerger
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessor
-from transformers.utils import ModelOutput
 from tinygrad import Tensor, dtypes
 from typing import Any
 import torch.nn as nn
 import torch.nn.functional as F
+from collections import OrderedDict
+
+class ModelOutput(OrderedDict):
+    def __setitem__(self, key, value):
+        super().__setattr__(key, value)
 
 def get_vision_position_ids(
     grid_thw: torch.Tensor,

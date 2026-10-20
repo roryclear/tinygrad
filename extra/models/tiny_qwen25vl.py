@@ -17,13 +17,7 @@ from tinygrad import Tensor, dtypes
 from typing import Any
 import torch.nn as nn
 
-class Qwen2_5_VLPreTrainedModel(Qwen2VLPreTrainedModel):
-    pass
-
-class Qwen2_5_VisionPatchEmbed(PatchEmbed):
-    pass
-
-class Qwen2_5_VisionTransformerPretrainedModel(Qwen2_5_VLPreTrainedModel):
+class Qwen2_5_VisionTransformerPretrainedModel(Qwen2VLPreTrainedModel):
     config: Any
     _no_split_modules = ["Qwen2_5_VLVisionBlock"]
     _input_embed_layer = "patch_embed"
@@ -40,7 +34,7 @@ class Qwen2_5_VisionTransformerPretrainedModel(Qwen2_5_VLPreTrainedModel):
         self.window_size = config.window_size
         self.spatial_merge_unit = self.spatial_merge_size * self.spatial_merge_size
 
-        self.patch_embed = Qwen2_5_VisionPatchEmbed(
+        self.patch_embed = PatchEmbed(
             patch_size=config.patch_size,
             temporal_patch_size=config.temporal_patch_size,
             in_channels=config.in_channels,

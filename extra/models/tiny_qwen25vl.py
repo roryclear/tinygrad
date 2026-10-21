@@ -7,16 +7,225 @@ from huggingface_hub import hf_hub_download
 from safetensors import safe_open
 from transformers import AutoConfig
 from transformers.models.qwen2_vl.modeling_qwen2_vl import Qwen2VLPreTrainedModel
-from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessor
+from transformers.image_processing_backends import TorchvisionBackend
+from transformers.image_utils import PILImageResampling, OPENAI_CLIP_MEAN, OPENAI_CLIP_STD, SizeDict
+from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessorKwargs, smart_resize
+from transformers.image_transforms import group_images_by_shape, reorder_images
 from transformers.modeling_utils import PreTrainedModel
 from transformers.modeling_layers import GradientCheckpointingLayer
 from transformers.activations import ACT2FN
 from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
+from transformers.image_processing_utils import BatchFeature
 from tinygrad import Tensor, dtypes
 from typing import Any
 import torch.nn as nn
 import torch.nn.functional as F
 from collections import OrderedDict
+
+class Qwen2VLImageProcessor(TorchvisionBackend):
+    do_resize = True
+    resample = PILImageResampling.BICUBIC
+    size = {"shortest_edge": 56 * 56, "longest_edge": 28 * 28 * 1280}
+    default_to_square = False
+    do_rescale = True
+    do_normalize = True
+    image_mean = OPENAI_CLIP_MEAN
+    image_std = OPENAI_CLIP_STD
+    do_convert_rgb = True
+    patch_size = 14
+    temporal_patch_size = 2
+    merge_size = 2
+    valid_kwargs = Qwen2VLImageProcessorKwargs
+    model_input_names = ["pixel_values", "image_grid_thw"]
+
+    def __init__(self, **kwargs):
+        # backward compatibility: override size with min_pixels and max_pixels if they are provided
+        size = kwargs.pop("size", None)
+        size = dict(self.size) if size is None else size
+        if (min_pixels := kwargs.pop("min_pixels", None)) is not None:
+            size["shortest_edge"] = min_pixels
+            size.pop("min_pixels", None)
+        if (max_pixels := kwargs.pop("max_pixels", None)) is not None:
+            size["longest_edge"] = max_pixels
+            size.pop("max_pixels", None)
+        super().__init__(size=size, **kwargs)
+
+    def _standardize_kwargs(
+        self,
+        size: Any,
+        min_pixels: int | None = None,
+        max_pixels: int | None = None,
+        **kwargs,
+    ) -> dict:
+        if min_pixels is not None or max_pixels is not None:
+            warnings.warn(
+                "Passing `min_pixels` and `max_pixels` to a processor call is deprecated and will be removed in v5.23. "
+                "Pass in `size={'longest_edge': xxx, 'shortest_edge': xxx} to override the target size.`",
+                FutureWarning,
+            )
+
+            size_dict = dict(size) if isinstance(size, (dict, SizeDict)) else {}
+            if min_pixels is not None:
+                size_dict["shortest_edge"] = min_pixels
+            if max_pixels is not None:
+                size_dict["longest_edge"] = max_pixels
+            size = SizeDict(**size_dict)
+        return super()._standardize_kwargs(size=size, **kwargs)
+
+    def preprocess(
+        self,
+        images: Any,
+        **kwargs,
+    ):
+        return super().preprocess(images, **kwargs)
+
+    def resize(
+        self,
+        images: "torch.Tensor",
+        size: Any,
+        resample: Any,
+        factor: int,
+        **kwargs,
+    ) -> "torch.Tensor":
+        """Resize dynamically based on input image aspect ratio."""
+        if not size.shortest_edge or not size.longest_edge:
+            raise ValueError(f"`size` dict must contain 'shortest_edge' and 'longest_edge' keys but got {size}.")
+
+        height, width = images.shape[-2:]
+        resized_height, resized_width = smart_resize(
+            height,
+            width,
+            factor=factor,
+            min_pixels=size.shortest_edge,
+            max_pixels=size.longest_edge,
+        )
+        return super().resize(
+            image=images,
+            size=SizeDict(height=resized_height, width=resized_width),
+            resample=resample,
+        )
+
+    def patchify(
+        self,
+        images: "torch.Tensor",
+        patch_size: int,
+        merge_size: int,
+        temporal_patch_size: int,
+    ) -> tuple["torch.Tensor", int, int]:
+        """Patchifies each image into flat layout of shape (`seq_len`, `patch_dim`) so we can concat dynamically shaped pixels."""
+        batch_size, channel, resized_height, resized_width = images.shape
+        grid_h, grid_w = resized_height // patch_size, resized_width // patch_size
+        patches = images.reshape(
+            batch_size,
+            channel,
+            grid_h // merge_size,
+            merge_size,
+            patch_size,
+            grid_w // merge_size,
+            merge_size,
+            patch_size,
+        )
+        # Reorder dimensions to group grid and patch information for subsequent flattening.
+        # [batch, grid_h/merge, grid_w/merge, merge, merge, channel, patch, patch]
+        patches = patches.permute(0, 2, 5, 3, 6, 1, 4, 7)
+
+        flatten_patches = (
+            patches.unsqueeze(6)
+            .expand(-1, -1, -1, -1, -1, -1, temporal_patch_size, -1, -1)
+            .reshape(
+                batch_size,
+                grid_h * grid_w,
+                channel * temporal_patch_size * patch_size * patch_size,
+            )
+        )
+        return flatten_patches, grid_h, grid_w
+
+    def _preprocess(
+        self,
+        images: list["torch.Tensor"],
+        do_resize: bool,
+        size: Any,
+        resample: Any,
+        do_rescale: bool,
+        rescale_factor: float,
+        do_normalize: bool,
+        image_mean: float | list[float] | None,
+        image_std: float | list[float] | None,
+        patch_size: int,
+        temporal_patch_size: int,
+        merge_size: int,
+        disable_grouping: bool | None,
+        return_tensors: Any,
+        **kwargs,
+    ):
+        grouped_images, grouped_images_index = group_images_by_shape(images, disable_grouping=disable_grouping)
+        resized_images_grouped = {}
+        for shape, stacked_images in grouped_images.items():
+            if do_resize:
+                stacked_images = self.resize(
+                    images=stacked_images,
+                    size=size,
+                    resample=resample,
+                    factor=patch_size * merge_size,
+                )
+            resized_images_grouped[shape] = stacked_images
+        resized_images = reorder_images(resized_images_grouped, grouped_images_index)
+
+        grouped_images, grouped_images_index = group_images_by_shape(resized_images, disable_grouping=disable_grouping)
+        processed_images_grouped = {}
+        processed_grids = {}
+        for shape, stacked_images in grouped_images.items():
+            stacked_images = self.rescale_and_normalize(
+                stacked_images, do_rescale, rescale_factor, do_normalize, image_mean, image_std
+            )
+            patches, grid_h, grid_w = self.patchify(
+                stacked_images,
+                patch_size=patch_size,
+                merge_size=merge_size,
+                temporal_patch_size=temporal_patch_size,
+            )
+
+            processed_images_grouped[shape] = patches
+            processed_grids[shape] = [[1, grid_h, grid_w]] * len(stacked_images)
+
+        processed_images = reorder_images(processed_images_grouped, grouped_images_index)
+        processed_grids_ordered = reorder_images(processed_grids, grouped_images_index)
+        pixel_values = processed_images[0] if len(processed_images) == 1 else torch.cat(processed_images, dim=0)
+        image_grid_thw = torch.tensor(processed_grids_ordered, dtype=torch.long)
+
+        return BatchFeature(
+            data={"pixel_values": pixel_values, "image_grid_thw": image_grid_thw}, tensor_type=return_tensors
+        )
+
+    def get_number_of_image_patches(self, height: int, width: int, images_kwargs: dict | None = None) -> int:
+        """
+        A utility that returns number of image patches for a given image size.
+
+        Note: Do not remove this method! It is used by vLLM to infer the number of patches and placeholders
+        without an image input.
+
+        Args:
+            height (`int`):
+                Height of the input image.
+            width (`int`):
+                Width of the input image.
+            images_kwargs (`dict`, *optional*)
+                Any kwargs to override defaults of the image processor.
+        Returns:
+            `int`: Number of image patches per image.
+        """
+        images_kwargs = images_kwargs or {}
+        min_pixels = images_kwargs["min_pixels"] if "min_pixels" in images_kwargs else self.size["shortest_edge"]
+        max_pixels = images_kwargs["max_pixels"] if "max_pixels" in images_kwargs else self.size["longest_edge"]
+        patch_size = images_kwargs.get("patch_size", self.patch_size)
+        merge_size = images_kwargs.get("merge_size", self.merge_size)
+
+        factor = patch_size * merge_size
+        resized_height, resized_width = smart_resize(
+            height, width, factor, min_pixels=min_pixels, max_pixels=max_pixels
+        )
+        grid_h, grid_w = resized_height // patch_size, resized_width // patch_size
+        return grid_h * grid_w
 
 class Qwen2_5_VLPreTrainedModel(PreTrainedModel):
     config: Any

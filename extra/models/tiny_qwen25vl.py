@@ -7,7 +7,7 @@ from huggingface_hub import hf_hub_download
 from safetensors import safe_open
 from transformers import AutoConfig
 from transformers.models.qwen2_vl.modeling_qwen2_vl import Qwen2VLPreTrainedModel
-from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import Qwen2_5_VisionTransformerPretrainedModel, Qwen2_5_VLVisionRotaryEmbedding, apply_rotary_pos_emb_vision, repeat_kv
+from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import Qwen2_5_VisionTransformerPretrainedModel, Qwen2_5_VLVisionRotaryEmbedding, apply_rotary_pos_emb_vision, rotate_half
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessor
 from transformers.modeling_layers import GradientCheckpointingLayer
 from transformers.activations import ACT2FN
@@ -18,6 +18,26 @@ from typing import Any
 import torch.nn as nn
 import torch.nn.functional as F
 from collections import OrderedDict
+
+def apply_rotary_pos_emb_vision(
+    q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:
+    orig_q_dtype = q.dtype
+    orig_k_dtype = k.dtype
+    q, k = q.float(), k.float()
+    cos, sin = cos.unsqueeze(-2).float(), sin.unsqueeze(-2).float()
+    q_embed = (q * cos) + (rotate_half(q) * sin)
+    k_embed = (k * cos) + (rotate_half(k) * sin)
+    q_embed = q_embed.to(orig_q_dtype)
+    k_embed = k_embed.to(orig_k_dtype)
+    return q_embed, k_embed
+
+def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
+    batch, num_key_value_heads, slen, head_dim = hidden_states.shape
+    if n_rep == 1:
+        return hidden_states
+    hidden_states = hidden_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, slen, head_dim)
+    return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
 
 def eager_attention_forward(
     module: nn.Module,

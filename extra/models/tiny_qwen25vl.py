@@ -12,7 +12,6 @@ from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageP
 from transformers.modeling_layers import GradientCheckpointingLayer
 from transformers.activations import ACT2FN
 from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
-from transformers.utils.generic import is_flash_attention_requested
 from tinygrad import Tensor, dtypes
 from typing import Any
 import torch.nn as nn
@@ -179,47 +178,27 @@ class Qwen2_5_VLVisionAttention(nn.Module):
         attention_interface: Any = ALL_ATTENTION_FUNCTIONS.get_interface(
             self.config._attn_implementation, eager_attention_forward
         )
+        # Other implementations: Process each chunk separately
+        lengths = cu_seqlens[1:] - cu_seqlens[:-1]
+        splits = [
+            torch.split(tensor, lengths.tolist(), dim=2) for tensor in (query_states, key_states, value_states)
+        ]
 
-        if is_flash_attention_requested(self.config):
-            # Flash Attention: Use cu_seqlens for variable length attention
-            max_seqlen = get_max_seqlen(cu_seqlens, self.config, kwargs={"max_seqlen": max_seqlen})
-            attn_output, _ = attention_interface(
+        attn_outputs = [
+            attention_interface(
                 self,
-                query_states,
-                key_states,
-                value_states,
+                q,
+                k,
+                v,
                 attention_mask=None,
                 scaling=self.scaling,
                 dropout=0.0 if not self.training else self.attention_dropout,
-                cu_seq_lens_q=cu_seqlens,
-                cu_seq_lens_k=cu_seqlens,
-                max_length_q=max_seqlen,
-                max_length_k=max_seqlen,
                 is_causal=False,
                 **kwargs,
-            )
-        else:
-            # Other implementations: Process each chunk separately
-            lengths = cu_seqlens[1:] - cu_seqlens[:-1]
-            splits = [
-                torch.split(tensor, lengths.tolist(), dim=2) for tensor in (query_states, key_states, value_states)
-            ]
-
-            attn_outputs = [
-                attention_interface(
-                    self,
-                    q,
-                    k,
-                    v,
-                    attention_mask=None,
-                    scaling=self.scaling,
-                    dropout=0.0 if not self.training else self.attention_dropout,
-                    is_causal=False,
-                    **kwargs,
-                )[0]
-                for q, k, v in zip(*splits)
-            ]
-            attn_output = torch.cat(attn_outputs, dim=1)
+            )[0]
+            for q, k, v in zip(*splits)
+        ]
+        attn_output = torch.cat(attn_outputs, dim=1)
 
         attn_output = attn_output.reshape(seq_length, -1).contiguous()
         attn_output = self.proj(attn_output)

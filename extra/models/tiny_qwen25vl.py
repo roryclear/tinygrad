@@ -13,7 +13,7 @@ from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageP
 from transformers.image_transforms import group_images_by_shape, reorder_images
 from transformers.modeling_utils import PreTrainedModel
 from transformers.modeling_layers import GradientCheckpointingLayer
-from transformers.activations import ACT2FN
+from transformers.activations import SiLUActivation
 from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
 from transformers.image_processing_utils import BatchFeature
 from tinygrad import Tensor, dtypes
@@ -537,7 +537,7 @@ class Qwen2_5_VLMLP(nn.Module):
         self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=bias)
         self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=bias)
         self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=bias)
-        self.act_fn = ACT2FN[config.hidden_act]
+        self.act_fn = SiLUActivation()
 
     def forward(self, hidden_state):
         return self.down_proj(self.act_fn(self.gate_proj(hidden_state)) * self.up_proj(hidden_state))

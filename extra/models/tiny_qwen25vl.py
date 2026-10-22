@@ -15,7 +15,6 @@ from transformers.modeling_utils import PreTrainedModel
 from transformers.modeling_layers import GradientCheckpointingLayer
 from transformers.activations import SiLUActivation
 from transformers.integrations.sdpa_attention import sdpa_attention_forward
-from transformers.image_processing_utils import BatchFeature
 from tinygrad import Tensor, dtypes
 from typing import Any
 import torch.nn as nn
@@ -156,7 +155,7 @@ class Qwen2VLImageProcessor(TorchvisionBackend):
         disable_grouping: bool | None,
         return_tensors: Any,
         **kwargs,
-    ):
+    ):  
         grouped_images, grouped_images_index = group_images_by_shape(images, disable_grouping=disable_grouping)
         resized_images_grouped = {}
         for shape, stacked_images in grouped_images.items():
@@ -192,9 +191,7 @@ class Qwen2VLImageProcessor(TorchvisionBackend):
         pixel_values = processed_images[0] if len(processed_images) == 1 else torch.cat(processed_images, dim=0)
         image_grid_thw = torch.tensor(processed_grids_ordered, dtype=torch.long)
 
-        return BatchFeature(
-            data={"pixel_values": pixel_values, "image_grid_thw": image_grid_thw}, tensor_type=return_tensors
-        )
+        return {"pixel_values": pixel_values, "image_grid_thw": image_grid_thw}
 
     def get_number_of_image_patches(self, height: int, width: int, images_kwargs: dict | None = None) -> int:
         """

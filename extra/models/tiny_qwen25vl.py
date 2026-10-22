@@ -8,13 +8,13 @@ from safetensors import safe_open
 from transformers import AutoConfig
 from transformers.models.qwen2_vl.modeling_qwen2_vl import Qwen2VLPreTrainedModel
 from transformers.image_processing_backends import TorchvisionBackend
-from transformers.image_utils import PILImageResampling, OPENAI_CLIP_MEAN, OPENAI_CLIP_STD, SizeDict
+from transformers.image_utils import PILImageResampling, SizeDict
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessorKwargs, smart_resize
 from transformers.image_transforms import group_images_by_shape, reorder_images
 from transformers.modeling_utils import PreTrainedModel
 from transformers.modeling_layers import GradientCheckpointingLayer
 from transformers.activations import SiLUActivation
-from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
+from transformers.integrations.sdpa_attention import sdpa_attention_forward
 from transformers.image_processing_utils import BatchFeature
 from tinygrad import Tensor, dtypes
 from typing import Any
@@ -29,15 +29,14 @@ class Qwen2VLImageProcessor(TorchvisionBackend):
     default_to_square = False
     do_rescale = True
     do_normalize = True
-    image_mean = OPENAI_CLIP_MEAN
-    image_std = OPENAI_CLIP_STD
+    image_mean = [0.48145466, 0.4578275, 0.40821073] #OPENAI_CLIP_MEAN
+    image_std = [0.26862954, 0.26130258, 0.27577711] # OPENAI_CLIP_STD
     do_convert_rgb = True
     patch_size = 14
     temporal_patch_size = 2
     merge_size = 2
     valid_kwargs = Qwen2VLImageProcessorKwargs
     model_input_names = ["pixel_values", "image_grid_thw"]
-
     def __init__(self, **kwargs):
         # backward compatibility: override size with min_pixels and max_pixels if they are provided
         size = kwargs.pop("size", None)
@@ -500,9 +499,7 @@ class Qwen2_5_VLVisionAttention(nn.Module):
         key_states = key_states.transpose(0, 1).unsqueeze(0)
         value_states = value_states.transpose(0, 1).unsqueeze(0)
 
-        attention_interface: Any = ALL_ATTENTION_FUNCTIONS.get_interface(
-            self.config._attn_implementation, eager_attention_forward
-        )
+        attention_interface = sdpa_attention_forward
         # Other implementations: Process each chunk separately
         lengths = cu_seqlens[1:] - cu_seqlens[:-1]
         splits = [

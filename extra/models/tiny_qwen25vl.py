@@ -159,13 +159,6 @@ class Qwen2VLImageProcessor(TorchvisionBackend):
         grouped_images, grouped_images_index = group_images_by_shape(images, disable_grouping=disable_grouping)
         resized_images_grouped = {}
         for shape, stacked_images in grouped_images.items():
-            if do_resize:
-                stacked_images = self.resize(
-                    images=stacked_images,
-                    size=size,
-                    resample=resample,
-                    factor=patch_size * merge_size,
-                )
             resized_images_grouped[shape] = stacked_images
         resized_images = reorder_images(resized_images_grouped, grouped_images_index)
 
@@ -190,26 +183,9 @@ class Qwen2VLImageProcessor(TorchvisionBackend):
         processed_grids_ordered = reorder_images(processed_grids, grouped_images_index)
         pixel_values = processed_images[0] if len(processed_images) == 1 else torch.cat(processed_images, dim=0)
         image_grid_thw = torch.tensor(processed_grids_ordered, dtype=torch.long)
-
         return {"pixel_values": pixel_values, "image_grid_thw": image_grid_thw}
 
     def get_number_of_image_patches(self, height: int, width: int, images_kwargs: dict | None = None) -> int:
-        """
-        A utility that returns number of image patches for a given image size.
-
-        Note: Do not remove this method! It is used by vLLM to infer the number of patches and placeholders
-        without an image input.
-
-        Args:
-            height (`int`):
-                Height of the input image.
-            width (`int`):
-                Width of the input image.
-            images_kwargs (`dict`, *optional*)
-                Any kwargs to override defaults of the image processor.
-        Returns:
-            `int`: Number of image patches per image.
-        """
         images_kwargs = images_kwargs or {}
         min_pixels = images_kwargs["min_pixels"] if "min_pixels" in images_kwargs else self.size["shortest_edge"]
         max_pixels = images_kwargs["max_pixels"] if "max_pixels" in images_kwargs else self.size["longest_edge"]

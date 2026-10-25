@@ -564,7 +564,6 @@ class Qwen2_5_VLVisionAttention(nn.Module):
         key_states = key_states.transpose(0, 1).unsqueeze(0)
         value_states = value_states.transpose(0, 1).unsqueeze(0)
 
-        attention_interface = sdpa_attention_forward
         # Other implementations: Process each chunk separately
         lengths = cu_seqlens[1:] - cu_seqlens[:-1]
         splits = [
@@ -572,7 +571,7 @@ class Qwen2_5_VLVisionAttention(nn.Module):
         ]
 
         attn_outputs = [
-            attention_interface(
+            sdpa_attention_forward(
                 self,
                 q,
                 k,

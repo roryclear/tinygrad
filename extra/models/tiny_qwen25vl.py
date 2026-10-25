@@ -8,7 +8,7 @@ from huggingface_hub import hf_hub_download
 from safetensors import safe_open
 from transformers import AutoConfig
 from transformers.models.qwen2_vl.modeling_qwen2_vl import Qwen2VLPreTrainedModel
-from transformers.image_processing_utils import ImagesKwargs, Iterable, get_size_dict, SizeDict, validate_typed_dict, partial
+from transformers.image_processing_utils import ImagesKwargs, SizeDict, validate_typed_dict, partial
 from transformers.image_processing_backends import convert_to_rgb, tvF
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessorKwargs
 from transformers.modeling_utils import PreTrainedModel
@@ -148,7 +148,6 @@ class BaseImageProcessor:
                 attributes[key] = kwarg
             else:
                 attributes[key] = deepcopy(getattr(self, key, None))
-        attributes = self._standardize_kwargs(**attributes)
         for key, value in attributes.items():
             setattr(self, key, value)
 
@@ -243,45 +242,6 @@ class BaseImageProcessor:
         images = self._prepare_image_like_inputs(images, **kwargs)
         return self._preprocess(images, *args, **kwargs)
 
-    def _standardize_kwargs(
-        self,
-        size: int | Iterable[int] | dict[str, int] | SizeDict | None = None,
-        crop_size: int | Iterable[int] | dict[str, int] | SizeDict | None = None,
-        pad_size: int | Iterable[int] | dict[str, int] | SizeDict | None = None,
-        default_to_square: bool | None = None,
-        image_mean: float | list[float] | None = None,
-        image_std: float | list[float] | None = None,
-        **kwargs,
-    ) -> dict:
-        """
-        Standardize kwargs to canonical format before validation.
-        Can be overridden by subclasses to customize the processing of kwargs.
-        """
-        if kwargs is None:
-            kwargs = {}
-        if size is not None and not isinstance(size, SizeDict):
-            size = SizeDict(**get_size_dict(size=size, default_to_square=default_to_square))
-        if crop_size is not None and not isinstance(crop_size, SizeDict):
-            crop_size = SizeDict(**get_size_dict(crop_size, param_name="crop_size"))
-        if pad_size is not None and not isinstance(pad_size, SizeDict):
-            pad_size = SizeDict(**get_size_dict(size=pad_size, param_name="pad_size"))
-        if isinstance(image_mean, list):
-            image_mean = tuple(image_mean)
-        if isinstance(image_std, list):
-            image_std = tuple(image_std)
-
-        kwargs["size"] = size
-        kwargs["crop_size"] = crop_size
-        kwargs["pad_size"] = pad_size
-        kwargs["image_mean"] = image_mean
-        kwargs["image_std"] = image_std
-
-        return kwargs
-
-    # Backwards compatibility for method that was renamed
-    _further_process_kwargs = _standardize_kwargs
-
-
     def preprocess(
         self,
         images,
@@ -295,9 +255,6 @@ class BaseImageProcessor:
         # Set default kwargs from self
         for kwarg_name in self._valid_kwargs_names:
             kwargs.setdefault(kwarg_name, getattr(self, kwarg_name, None))
-
-        # Update kwargs that need further processing before being validated
-        kwargs = self._standardize_kwargs(**kwargs)
 
         # This is a workaround when adding new image like inputs to existing processors where we cannot
         # modify the order of the input arguments for BC. For details see:
@@ -563,28 +520,6 @@ class Qwen2VLImageProcessor(TorchvisionBackend):
             size["longest_edge"] = max_pixels
             size.pop("max_pixels", None)
         super().__init__(size=size, **kwargs)
-
-    def _standardize_kwargs(
-        self,
-        size: Any,
-        min_pixels: int | None = None,
-        max_pixels: int | None = None,
-        **kwargs,
-    ) -> dict:
-        if min_pixels is not None or max_pixels is not None:
-            warnings.warn(
-                "Passing `min_pixels` and `max_pixels` to a processor call is deprecated and will be removed in v5.23. "
-                "Pass in `size={'longest_edge': xxx, 'shortest_edge': xxx} to override the target size.`",
-                FutureWarning,
-            )
-
-            size_dict = dict(size) if isinstance(size, (dict, SizeDict)) else {}
-            if min_pixels is not None:
-                size_dict["shortest_edge"] = min_pixels
-            if max_pixels is not None:
-                size_dict["longest_edge"] = max_pixels
-            size = SizeDict(**size_dict)
-        return super()._standardize_kwargs(size=size, **kwargs)
 
     def preprocess(
         self,

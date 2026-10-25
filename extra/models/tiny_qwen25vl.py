@@ -8,7 +8,7 @@ from huggingface_hub import hf_hub_download
 from safetensors import safe_open
 from transformers import AutoConfig
 from transformers.models.qwen2_vl.modeling_qwen2_vl import Qwen2VLPreTrainedModel
-from transformers.image_processing_utils import ImageProcessingMixin, ImagesKwargs, Iterable, get_size_dict, SizeDict, validate_typed_dict, partial
+from transformers.image_processing_utils import ImagesKwargs, Iterable, get_size_dict, SizeDict, validate_typed_dict, partial
 from transformers.image_processing_backends import ChannelDimension, BatchFeature, convert_to_rgb, infer_channel_dimension_format, tvF
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessorKwargs
 from transformers.modeling_utils import PreTrainedModel
@@ -130,17 +130,14 @@ def smart_resize(
         w_bar = math.ceil(width * beta / factor) * factor
     return h_bar, w_bar
 
-class BaseImageProcessor(ImageProcessingMixin):
+class BaseImageProcessor:
     valid_kwargs = ImagesKwargs
 
     default_to_square = True
     rescale_factor = 1 / 255
     model_input_names = ["pixel_values"]
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        # We don't call self._set_attributes in BaseImageProcessor for backward compatibility with remote code
-        # We call it instead in the backend subclasses' __init__ methods.
+    def __init__(self, **kwargs): pass
 
     def _set_attributes(self, **kwargs):
         """Resolve and set instance attributes from kwargs and class-level defaults for all valid kwargs."""

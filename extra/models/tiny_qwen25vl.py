@@ -11,13 +11,93 @@ from transformers.image_processing_backends import TorchvisionBackend
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessorKwargs
 from transformers.modeling_utils import PreTrainedModel
 from transformers.modeling_layers import GradientCheckpointingLayer
-from transformers.integrations.sdpa_attention import sdpa_attention_forward
 from tinygrad import Tensor, dtypes
 from typing import Any
 import torch.nn as nn
 import torch.nn.functional as F
 from collections import OrderedDict
 import math
+
+def sdpa_attention_forward(
+    module: torch.nn.Module,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attention_mask: torch.Tensor | None,
+    dropout: float = 0.0,
+    scaling: float | None = None,
+    is_causal: bool | None = None,
+    position_bias: torch.Tensor | None = None,
+    cache=None,
+    **kwargs,
+) -> tuple[torch.Tensor, None]:
+    sdpa_kwargs = {}
+    if hasattr(module, "num_key_value_groups") and module.num_key_value_groups > 1:
+        if not use_gqa_in_sdpa(attention_mask, key, value):
+            key = repeat_kv(key, module.num_key_value_groups)
+            value = repeat_kv(value, module.num_key_value_groups)
+        else:
+            sdpa_kwargs["enable_gqa"] = True
+
+    q_length = query.shape[2]
+    kv_length = key.shape[2]
+
+    # Instead of relying on the value set in the module directly, we use the is_causal passed in kwargs if it is presented
+    is_causal = is_causal if is_causal is not None else getattr(module, "is_causal", True)
+
+    # SDPA's Flash Attention (and cuDNN) kernels rely on the `is_causal` flag. However, there are certain conditions:
+    # - Not in decoding phase (otherwise we want full attention on the single query token)
+    # - Attention mask is not to be provided (even if it is a causal pattern)
+    # - Internally, we marked this as compatible with causal, i.e. it is a decoder attention type
+    #
+    # Quirks on the conditionals:
+    # - We avoid inline passing this to the SDPA function directly to support both torch.compile's dynamic shapes and
+    #   full graph options. Otherwise, dynamic shapes are prevented from compiling.
+    # - It is important to check first for the shape, otherwise compile will fail with
+    #   `argument 'is_causal' must be bool, not SymBool`.
+    # TODO: under `torch.export` with dynamic shapes, `q_length > 1` is a `SymBool` and `and` returns the first falsy
+    #   operand, so `is_causal` can end up being that `SymBool` (e.g. the seamless_m4t / seamless_m4t_v2 speech
+    #   encoders). Reordering the conditions fixes it but breaks the compile requirement above, so it should rather be
+    #   handled on the exporter side. See https://github.com/huggingface/transformers/pull/46196#discussion_r3717333141
+    is_causal = q_length > 1 and attention_mask is None and is_causal
+
+    # Shapes (e.g. query.shape[2]) are tensors during jit tracing, resulting in `is_causal` being a tensor.
+    # We convert it to a bool for the SDPA kernel that only accepts bools.
+    if torch.jit.is_tracing() and isinstance(is_causal, torch.Tensor):
+        is_causal = is_causal.item()
+
+    # This scenario can only happen during prefill with an empty StaticCache. Technically, since sdpa's `is_causal` mask alignment
+    # is upper-left, `is_causal=True` is enough to correctly compute the attention. However, sdpa will only dispatch to
+    # flash kernel if and only if q_length == kv_length, therefore it is more efficient to slice here and remove the masked tokens
+    # rather than to use the other available kernels for such a case.
+    # Note that we never compile prefill, and even if the user is doing it on its own, prefill and decode are 2 separate graphs
+    # anyway, so altering the shapes is fine here
+    if is_causal and attention_mask is None and q_length > 1 and kv_length > q_length:
+        key = key[:, :, :q_length, :]
+        value = value[:, :, :q_length, :]
+        # If we have a position_bias, we need to crop it as well (on last dim, which is the kv seq_len dim)
+        if position_bias is not None:
+            position_bias = position_bias[:, :, :, :q_length]
+
+    # If we have a position_bias, create the correct floating-point mask by combining it with the existing mask, or a causal mask
+    # if `is_causal=True`
+    if position_bias is not None:
+        attention_mask = create_position_bias_mask(position_bias, attention_mask, is_causal, query, key)
+        is_causal = False
+
+    attn_output = torch.nn.functional.scaled_dot_product_attention(
+        query,
+        key,
+        value,
+        attn_mask=attention_mask,
+        dropout_p=dropout,
+        scale=scaling,
+        is_causal=is_causal,
+        **sdpa_kwargs,
+    )
+    attn_output = attn_output.transpose(1, 2).contiguous()
+
+    return attn_output, None
 
 class SizeDict:
     """

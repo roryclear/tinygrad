@@ -12,7 +12,6 @@ from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageP
 from transformers.image_transforms import group_images_by_shape, reorder_images
 from transformers.modeling_utils import PreTrainedModel
 from transformers.modeling_layers import GradientCheckpointingLayer
-from transformers.activations import SiLUActivation
 from transformers.integrations.sdpa_attention import sdpa_attention_forward
 from tinygrad import Tensor, dtypes
 from typing import Any
@@ -600,7 +599,7 @@ class Qwen2_5_VLMLP(nn.Module):
         self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=bias)
         self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=bias)
         self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=bias)
-        self.act_fn = SiLUActivation()
+        self.act_fn = nn.functional.silu
 
     def forward(self, hidden_state):
         return self.down_proj(self.act_fn(self.gate_proj(hidden_state)) * self.up_proj(hidden_state))

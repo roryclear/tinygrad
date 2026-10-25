@@ -7,7 +7,7 @@ from huggingface_hub import hf_hub_download
 from safetensors import safe_open
 from transformers import AutoConfig
 from transformers.models.qwen2_vl.modeling_qwen2_vl import Qwen2VLPreTrainedModel
-from transformers.image_processing_backends import BaseImageProcessor, Unpack, ImagesKwargs, ImageInput, ChannelDimension, Optional, Union, Iterable, lru_cache, TensorType, BatchFeature, is_valid_image, get_image_type, ImageType, convert_to_rgb, infer_channel_dimension_format, tvF
+from transformers.image_processing_backends import BaseImageProcessor, ChannelDimension, BatchFeature, convert_to_rgb, infer_channel_dimension_format, tvF
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessorKwargs
 from transformers.modeling_utils import PreTrainedModel
 from transformers.modeling_layers import GradientCheckpointingLayer
@@ -195,7 +195,7 @@ def smart_resize(
 class TorchvisionBackend(BaseImageProcessor):
     """Torchvision backend for GPU-accelerated batched image processing."""
 
-    def __init__(self, **kwargs: Unpack[ImagesKwargs]):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._set_attributes(**kwargs)
 
@@ -207,41 +207,24 @@ class TorchvisionBackend(BaseImageProcessor):
         return "torchvision"
 
     def fetch_images(self, image_url_or_urls: str | list[str] | list[list[str]]):
-        """
-        Convert a single or a list of URLs / paths into `torch.Tensor` objects.
-
-        Already-valid image objects (tensors, numpy arrays, PIL Images) are passed through
-        unchanged so that callers who pre-load images are unaffected.
-        """
         if isinstance(image_url_or_urls, (list, tuple)):
             return [self.fetch_images(x) for x in image_url_or_urls]
-        elif isinstance(image_url_or_urls, str):
-            return load_image_as_tensor(image_url_or_urls)
-        elif is_valid_image(image_url_or_urls):
-            return image_url_or_urls
         else:
-            raise TypeError(f"only a single or a list of entries is supported but got type={type(image_url_or_urls)}")
+            return image_url_or_urls
 
     def process_image(
         self,
-        image: ImageInput,
+        image,
         do_convert_rgb: bool | None = None,
         input_data_format: str | ChannelDimension | None = None,
-        device: Optional["torch.device"] = None,
-        **kwargs: Unpack[ImagesKwargs],
+        device=None,
+        **kwargs,
     ) -> "torch.Tensor":
         """Process a single image for torchvision backend."""
-        image_type = get_image_type(image)
-        if image_type not in [ImageType.PIL, ImageType.TORCH, ImageType.NUMPY]:
-            raise ValueError(f"Unsupported input image type {image_type}")
-
         if do_convert_rgb:
             image = self.convert_to_rgb(image)
 
-        if image_type == ImageType.PIL:
-            image = tvF.pil_to_tensor(image)
-        elif image_type == ImageType.NUMPY:
-            image = torch.from_numpy(image).contiguous()
+        image = torch.from_numpy(image).contiguous()
 
         if image.ndim == 2:
             image = image.unsqueeze(0)
@@ -257,59 +240,9 @@ class TorchvisionBackend(BaseImageProcessor):
 
         return image
 
-    def convert_to_rgb(self, image: ImageInput) -> ImageInput:
+    def convert_to_rgb(self, image):
         """Convert an image to RGB format."""
         return convert_to_rgb(image)
-
-    def pad(
-        self,
-        images: list["torch.Tensor"],
-        pad_size: SizeDict = None,
-        fill_value: int | None = 0,
-        padding_mode: str | None = "constant",
-        return_mask: bool = False,
-        disable_grouping: bool | None = False,
-        is_nested: bool | None = False,
-        **kwargs,
-    ) -> Union[tuple["torch.Tensor", "torch.Tensor"], "torch.Tensor"]:
-        """Pad images using Torchvision with batched operations."""
-        if pad_size is not None:
-            if not (pad_size.height and pad_size.width):
-                raise ValueError(f"Pad size must contain 'height' and 'width' keys only. Got pad_size={pad_size}.")
-            pad_size = (pad_size.height, pad_size.width)
-        else:
-            pad_size = get_max_height_width(images)
-
-        grouped_images, grouped_images_index = group_images_by_shape(
-            images, disable_grouping=disable_grouping, is_nested=is_nested
-        )
-        processed_images_grouped = {}
-        processed_masks_grouped = {}
-        for shape, stacked_images in grouped_images.items():
-            image_size = stacked_images.shape[-2:]
-            padding_height = pad_size[0] - image_size[0]
-            padding_width = pad_size[1] - image_size[1]
-            if padding_height < 0 or padding_width < 0:
-                raise ValueError(
-                    f"Padding dimensions are negative. Please make sure that the `pad_size` is larger than the "
-                    f"image size. Got pad_size={pad_size}, image_size={image_size}."
-                )
-            if image_size != pad_size:
-                padding = (0, 0, padding_width, padding_height)
-                stacked_images = tvF.pad(stacked_images, padding, fill=fill_value, padding_mode=padding_mode)
-            processed_images_grouped[shape] = stacked_images
-
-            if return_mask:
-                stacked_masks = torch.zeros_like(stacked_images, dtype=torch.int64)[..., 0, :, :]
-                stacked_masks[..., : image_size[0], : image_size[1]] = 1
-                processed_masks_grouped[shape] = stacked_masks
-
-        processed_images = reorder_images(processed_images_grouped, grouped_images_index, is_nested=is_nested)
-        if return_mask:
-            processed_masks = reorder_images(processed_masks_grouped, grouped_images_index, is_nested=is_nested)
-            return processed_images, processed_masks
-
-        return processed_images
 
     def resize(
         self,
@@ -370,7 +303,7 @@ class TorchvisionBackend(BaseImageProcessor):
     def _compile_friendly_resize(
         image: "torch.Tensor",
         new_size: tuple[int, int],
-        interpolation: Optional["tvF.InterpolationMode"] = None,
+        interpolation=None,
         antialias: bool = True,
     ) -> "torch.Tensor":
         """A wrapper around tvF.resize for torch.compile compatibility with uint8 tensors."""
@@ -397,15 +330,14 @@ class TorchvisionBackend(BaseImageProcessor):
     def normalize(
         self,
         image: "torch.Tensor",
-        mean: float | Iterable[float],
-        std: float | Iterable[float],
+        mean,
+        std,
         inplace: bool = False,
         **kwargs,
     ) -> "torch.Tensor":
         """Normalize an image using Torchvision."""
         return tvF.normalize(image, mean, std, inplace=inplace)
 
-    @lru_cache(maxsize=10)
     def _fuse_mean_std_and_rescale_factor(
         self,
         do_normalize: bool | None = None,
@@ -413,7 +345,7 @@ class TorchvisionBackend(BaseImageProcessor):
         image_std: float | list[float] | None = None,
         do_rescale: bool | None = None,
         rescale_factor: float | None = None,
-        device: Optional["torch.device"] = None,
+        device=None,
     ) -> tuple:
         if do_rescale and do_normalize:
             # Fused rescale and normalize
@@ -492,9 +424,9 @@ class TorchvisionBackend(BaseImageProcessor):
         do_pad: bool | None,
         pad_size: SizeDict | None,
         disable_grouping: bool | None,
-        return_tensors: str | TensorType | None,
+        return_tensors,
         **kwargs,
-    ) -> BatchFeature:
+    ):
         """Preprocess using Torchvision backend (fast, GPU-accelerated)."""
         # Group images by size for batched resizing
         grouped_images, grouped_images_index = group_images_by_shape(images, disable_grouping=disable_grouping)

@@ -9,7 +9,7 @@ from safetensors import safe_open
 from transformers import AutoConfig
 from transformers.models.qwen2_vl.modeling_qwen2_vl import Qwen2VLPreTrainedModel
 from transformers.image_processing_utils import ImagesKwargs, Iterable, get_size_dict, SizeDict, validate_typed_dict, partial
-from transformers.image_processing_backends import ChannelDimension, BatchFeature, convert_to_rgb, infer_channel_dimension_format, tvF
+from transformers.image_processing_backends import ChannelDimension, convert_to_rgb, infer_channel_dimension_format, tvF
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessorKwargs
 from transformers.modeling_utils import PreTrainedModel
 from transformers.modeling_layers import GradientCheckpointingLayer
@@ -154,7 +154,7 @@ class BaseImageProcessor:
 
         self._valid_kwargs_names = list(self.valid_kwargs.__annotations__.keys())
 
-    def __call__(self, images, *args, **kwargs) -> BatchFeature:
+    def __call__(self, images, *args, **kwargs):
         """Preprocess an image or a batch of images."""
         return self.preprocess(images, *args, **kwargs)
 
@@ -231,7 +231,7 @@ class BaseImageProcessor:
         images,
         *args,
         **kwargs,
-    ) -> BatchFeature:
+    ):
         """
         Preprocess image-like inputs by preparing them and dispatching to `_preprocess`.
 
@@ -288,7 +288,7 @@ class BaseImageProcessor:
         *args,
         image_like_kwargs: dict[str, Any] | None = None,
         **kwargs,
-    ) -> BatchFeature:
+    ):
         # Perform type validation on received kwargs
         validate_typed_dict(self.valid_kwargs, kwargs)
 
@@ -326,114 +326,6 @@ class BaseImageProcessor:
         filtered_dict.pop("_valid_kwargs_names", None)
         return filtered_dict
 
-    def rescale(
-        self,
-        image: np.ndarray,
-        scale: float,
-        data_format: str | ChannelDimension | None = None,
-        input_data_format: str | ChannelDimension | None = None,
-        **kwargs,
-    ) -> np.ndarray:
-        """
-        Rescale an image by a scale factor. image = image * scale.
-
-        Args:
-            image (`np.ndarray`):
-                Image to rescale.
-            scale (`float`):
-                The scaling factor to rescale pixel values by.
-            data_format (`str` or `ChannelDimension`, *optional*):
-                The channel dimension format for the output image. If unset, the channel dimension format of the input
-                image is used. Can be one of:
-                - `"channels_first"` or `ChannelDimension.FIRST`: image in (num_channels, height, width) format.
-                - `"channels_last"` or `ChannelDimension.LAST`: image in (height, width, num_channels) format.
-            input_data_format (`ChannelDimension` or `str`, *optional*):
-                The channel dimension format for the input image. If unset, the channel dimension format is inferred
-                from the input image. Can be one of:
-                - `"channels_first"` or `ChannelDimension.FIRST`: image in (num_channels, height, width) format.
-                - `"channels_last"` or `ChannelDimension.LAST`: image in (height, width, num_channels) format.
-
-        Returns:
-            `np.ndarray`: The rescaled image.
-        """
-        return rescale(image, scale=scale, data_format=data_format, input_data_format=input_data_format, **kwargs)
-
-    # The next methods are kept for backwards compatibility with remote code, but are overridden by backends.
-    def normalize(
-        self,
-        image: np.ndarray,
-        mean: float | Iterable[float],
-        std: float | Iterable[float],
-        data_format: str | ChannelDimension | None = None,
-        input_data_format: str | ChannelDimension | None = None,
-        **kwargs,
-    ) -> np.ndarray:
-        """
-        Normalize an image. image = (image - image_mean) / image_std.
-
-        Args:
-            image (`np.ndarray`):
-                Image to normalize.
-            mean (`float` or `Iterable[float]`):
-                Image mean to use for normalization.
-            std (`float` or `Iterable[float]`):
-                Image standard deviation to use for normalization.
-            data_format (`str` or `ChannelDimension`, *optional*):
-                The channel dimension format for the output image. If unset, the channel dimension format of the input
-                image is used. Can be one of:
-                - `"channels_first"` or `ChannelDimension.FIRST`: image in (num_channels, height, width) format.
-                - `"channels_last"` or `ChannelDimension.LAST`: image in (height, width, num_channels) format.
-            input_data_format (`ChannelDimension` or `str`, *optional*):
-                The channel dimension format for the input image. If unset, the channel dimension format is inferred
-                from the input image. Can be one of:
-                - `"channels_first"` or `ChannelDimension.FIRST`: image in (num_channels, height, width) format.
-                - `"channels_last"` or `ChannelDimension.LAST`: image in (height, width, num_channels) format.
-
-        Returns:
-            `np.ndarray`: The normalized image.
-        """
-        return normalize(
-            image, mean=mean, std=std, data_format=data_format, input_data_format=input_data_format, **kwargs
-        )
-
-    def center_crop(
-        self,
-        image: np.ndarray,
-        size: dict[str, int],
-        data_format: str | ChannelDimension | None = None,
-        input_data_format: str | ChannelDimension | None = None,
-        **kwargs,
-    ) -> np.ndarray:
-        """
-        Center crop an image to `(size["height"], size["width"])`. If the input size is smaller than `crop_size` along
-        any edge, the image is padded with 0's and then center cropped.
-
-        Args:
-            image (`np.ndarray`):
-                Image to center crop.
-            size (`dict[str, int]`):
-                Size of the output image.
-            data_format (`str` or `ChannelDimension`, *optional*):
-                The channel dimension format for the output image. If unset, the channel dimension format of the input
-                image is used. Can be one of:
-                - `"channels_first"` or `ChannelDimension.FIRST`: image in (num_channels, height, width) format.
-                - `"channels_last"` or `ChannelDimension.LAST`: image in (height, width, num_channels) format.
-            input_data_format (`ChannelDimension` or `str`, *optional*):
-                The channel dimension format for the input image. If unset, the channel dimension format is inferred
-                from the input image. Can be one of:
-                - `"channels_first"` or `ChannelDimension.FIRST`: image in (num_channels, height, width) format.
-                - `"channels_last"` or `ChannelDimension.LAST`: image in (height, width, num_channels) format.
-        """
-        size = get_size_dict(size)
-        if "height" not in size or "width" not in size:
-            raise ValueError(f"The size dictionary must have keys 'height' and 'width'. Got {size.keys()}")
-        return center_crop(
-            image,
-            size=(size["height"], size["width"]),
-            data_format=data_format,
-            input_data_format=input_data_format,
-            **kwargs,
-        )
 
 class TorchvisionBackend(BaseImageProcessor):
     """Torchvision backend for GPU-accelerated batched image processing."""
@@ -650,53 +542,6 @@ class TorchvisionBackend(BaseImageProcessor):
         crop_top = int((image_height - crop_height) / 2.0)
         crop_left = int((image_width - crop_width) / 2.0)
         return tvF.crop(image, crop_top, crop_left, crop_height, crop_width)
-
-    def _preprocess(
-        self,
-        images: list["torch.Tensor"],
-        do_resize: bool,
-        size: SizeDict,
-        resample: "PILImageResampling | tvF.InterpolationMode | int | None",
-        do_center_crop: bool,
-        crop_size: SizeDict,
-        do_rescale: bool,
-        rescale_factor: float,
-        do_normalize: bool,
-        image_mean: float | list[float] | None,
-        image_std: float | list[float] | None,
-        do_pad: bool | None,
-        pad_size: SizeDict | None,
-        disable_grouping: bool | None,
-        return_tensors,
-        **kwargs,
-    ):
-        """Preprocess using Torchvision backend (fast, GPU-accelerated)."""
-        # Group images by size for batched resizing
-        grouped_images, grouped_images_index = group_images_by_shape(images, disable_grouping=disable_grouping)
-        resized_images_grouped = {}
-        for shape, stacked_images in grouped_images.items():
-            if do_resize:
-                stacked_images = self.resize(image=stacked_images, size=size, resample=resample)
-            resized_images_grouped[shape] = stacked_images
-        resized_images = reorder_images(resized_images_grouped, grouped_images_index)
-
-        # Group images by size for further processing
-        grouped_images, grouped_images_index = group_images_by_shape(resized_images, disable_grouping=disable_grouping)
-        processed_images_grouped = {}
-        for shape, stacked_images in grouped_images.items():
-            if do_center_crop:
-                stacked_images = self.center_crop(stacked_images, crop_size)
-            # Fused rescale and normalize
-            stacked_images = self.rescale_and_normalize(
-                stacked_images, do_rescale, rescale_factor, do_normalize, image_mean, image_std
-            )
-            processed_images_grouped[shape] = stacked_images
-        processed_images = reorder_images(processed_images_grouped, grouped_images_index)
-
-        if do_pad:
-            processed_images = self.pad(processed_images, pad_size=pad_size, disable_grouping=disable_grouping)
-
-        return BatchFeature(data={"pixel_values": processed_images}, tensor_type=return_tensors)
 
 class Qwen2VLImageProcessor(TorchvisionBackend):
     do_resize = True

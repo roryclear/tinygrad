@@ -9,7 +9,7 @@ from safetensors import safe_open
 from transformers import AutoConfig
 from transformers.models.qwen2_vl.modeling_qwen2_vl import Qwen2VLPreTrainedModel
 from transformers.image_processing_utils import ImagesKwargs, SizeDict, validate_typed_dict, partial
-from transformers.image_processing_backends import convert_to_rgb, tvF
+from transformers.image_processing_backends import tvF
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessorKwargs
 from transformers.modeling_utils import PreTrainedModel
 from transformers.modeling_layers import GradientCheckpointingLayer
@@ -292,11 +292,7 @@ class TorchvisionBackend(BaseImageProcessor):
         self._set_attributes(**kwargs)
 
     @property
-    def backend(self) -> str:
-        """
-        `str`: The backend used by this image processor.
-        """
-        return "torchvision"
+    def backend(self) -> str: return "torchvision"
 
     def fetch_images(self, image_url_or_urls: str | list[str] | list[list[str]]):
         if isinstance(image_url_or_urls, (list, tuple)):
@@ -307,14 +303,9 @@ class TorchvisionBackend(BaseImageProcessor):
     def process_image(
         self,
         image,
-        do_convert_rgb: bool | None = None,
         device=None,
         **kwargs,
     ) -> "torch.Tensor":
-        """Process a single image for torchvision backend."""
-        if do_convert_rgb:
-            image = self.convert_to_rgb(image)
-
         image = torch.from_numpy(image).contiguous()
 
         if image.ndim == 2:
@@ -326,10 +317,6 @@ class TorchvisionBackend(BaseImageProcessor):
             image = image.to(device)
 
         return image
-
-    def convert_to_rgb(self, image):
-        """Convert an image to RGB format."""
-        return convert_to_rgb(image)
 
     def resize(
         self,

@@ -9,7 +9,6 @@ from transformers import AutoConfig
 from transformers.models.qwen2_vl.modeling_qwen2_vl import Qwen2VLPreTrainedModel
 from transformers.image_processing_backends import TorchvisionBackend
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessorKwargs
-from transformers.image_transforms import group_images_by_shape, reorder_images
 from transformers.modeling_utils import PreTrainedModel
 from transformers.modeling_layers import GradientCheckpointingLayer
 from transformers.integrations.sdpa_attention import sdpa_attention_forward
@@ -248,13 +247,14 @@ class Qwen2VLImageProcessor(TorchvisionBackend):
         return_tensors: Any,
         **kwargs,
     ):  
-        grouped_images, grouped_images_index = group_images_by_shape(images, disable_grouping=disable_grouping)
+        grouped_images_index = {0: (0, 0)}
+        grouped_images = {0: images[0].unsqueeze(0)}
         resized_images_grouped = {}
         for shape, stacked_images in grouped_images.items():
             resized_images_grouped[shape] = stacked_images
-        resized_images = reorder_images(resized_images_grouped, grouped_images_index)
-
-        grouped_images, grouped_images_index = group_images_by_shape(resized_images, disable_grouping=disable_grouping)
+        resized_images = [resized_images_grouped[0][0]]
+        grouped_images_index = {0: (0, 0)}
+        grouped_images = {0: resized_images[0].unsqueeze(0)}
         processed_images_grouped = {}
         processed_grids = {}
         for shape, stacked_images in grouped_images.items():
@@ -271,8 +271,8 @@ class Qwen2VLImageProcessor(TorchvisionBackend):
             processed_images_grouped[shape] = patches
             processed_grids[shape] = [[1, grid_h, grid_w]] * len(stacked_images)
 
-        processed_images = reorder_images(processed_images_grouped, grouped_images_index)
-        processed_grids_ordered = reorder_images(processed_grids, grouped_images_index)
+        processed_images = [processed_images_grouped[0][0]]
+        processed_grids_ordered = [processed_grids[0][0]]
         pixel_values = processed_images[0] if len(processed_images) == 1 else torch.cat(processed_images, dim=0)
         image_grid_thw = torch.tensor(processed_grids_ordered, dtype=torch.long)
         return {"pixel_values": pixel_values, "image_grid_thw": image_grid_thw}
@@ -972,4 +972,5 @@ if __name__ == "__main__":
   print(embeddings, embeddings.sum().item())
   np.testing.assert_allclose(embeddings.sum().item(), -12742.4921875)
   print("done")
+
 

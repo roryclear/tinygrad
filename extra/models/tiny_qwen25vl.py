@@ -8,7 +8,6 @@ from safetensors import safe_open
 from transformers import AutoConfig
 from transformers.models.qwen2_vl.modeling_qwen2_vl import Qwen2VLPreTrainedModel
 from transformers.image_processing_backends import TorchvisionBackend
-from transformers.image_utils import SizeDict
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessorKwargs
 from transformers.image_transforms import group_images_by_shape, reorder_images
 from transformers.modeling_utils import PreTrainedModel
@@ -21,6 +20,71 @@ import torch.nn as nn
 import torch.nn.functional as F
 from collections import OrderedDict
 import math
+
+class SizeDict:
+    """
+    Hashable dictionary to store image size information.
+    """
+
+    height: int | None = None
+    width: int | None = None
+    longest_edge: int | None = None
+    shortest_edge: int | None = None
+    max_height: int | None = None
+    max_width: int | None = None
+    min_pixels: int | None = None
+    max_pixels: int | None = None
+
+    def __getitem__(self, key):
+        if hasattr(self, key):
+            return getattr(self, key)
+        raise KeyError(f"Key {key} not found in SizeDict.")
+
+    def get(self, key, default=None):
+        if hasattr(self, key) and getattr(self, key) is not None:
+            return getattr(self, key)
+        return default
+
+    def __iter__(self):
+        # Yield only non-None (key, value) pairs so dict(self) excludes missing values.
+        for f in fields(self):
+            val = getattr(self, f.name)
+            if val is not None:
+                yield f.name, val
+
+    def __hash__(self):
+        return hash(astuple(self))
+
+    def __contains__(self, key):
+        return hasattr(self, key) and getattr(self, key) is not None
+
+    def __setitem__(self, key, value):
+        if not hasattr(self, key):
+            raise KeyError(f"Key {key} is not a valid field of SizeDict.")
+        object.__setattr__(self, key, value)
+
+    def __eq__(self, other):
+        if isinstance(other, dict):
+            return dict(self) == other
+        if isinstance(other, SizeDict):
+            return tuple(getattr(self, f.name) for f in fields(self)) == tuple(
+                getattr(other, f.name) for f in fields(self)
+            )
+        return NotImplemented
+
+    def __or__(self, other) -> "SizeDict":
+        if isinstance(other, dict | SizeDict):
+            merged = dict(self)
+            merged.update(dict(other))
+            return SizeDict(**merged)
+        return NotImplemented
+
+    def __ror__(self, other) -> dict:
+        if isinstance(other, dict):
+            merged = dict(other)
+            merged.update(dict(self))
+            return merged
+        return NotImplemented
 
 def smart_resize(
     height: int, width: int, factor: int = 28, min_pixels: int = 56 * 56, max_pixels: int = 14 * 14 * 4 * 1280

@@ -9,7 +9,7 @@ from safetensors import safe_open
 from transformers import AutoConfig
 from transformers.models.qwen2_vl.modeling_qwen2_vl import Qwen2VLPreTrainedModel
 from transformers.image_processing_utils import ImagesKwargs, Iterable, get_size_dict, SizeDict, validate_typed_dict, partial
-from transformers.image_processing_backends import ChannelDimension, convert_to_rgb, infer_channel_dimension_format, tvF
+from transformers.image_processing_backends import convert_to_rgb, tvF
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessorKwargs
 from transformers.modeling_utils import PreTrainedModel
 from transformers.modeling_layers import GradientCheckpointingLayer
@@ -351,7 +351,6 @@ class TorchvisionBackend(BaseImageProcessor):
         self,
         image,
         do_convert_rgb: bool | None = None,
-        input_data_format: str | ChannelDimension | None = None,
         device=None,
         **kwargs,
     ) -> "torch.Tensor":
@@ -364,11 +363,7 @@ class TorchvisionBackend(BaseImageProcessor):
         if image.ndim == 2:
             image = image.unsqueeze(0)
 
-        if input_data_format is None:
-            input_data_format = infer_channel_dimension_format(image)
-
-        if input_data_format == ChannelDimension.LAST:
-            image = image.permute(2, 0, 1).contiguous()
+        image = image.permute(2, 0, 1).contiguous()
 
         if device is not None:
             image = image.to(device)
@@ -417,7 +412,6 @@ class TorchvisionBackend(BaseImageProcessor):
                 image,
                 size=size.shortest_edge,
                 default_to_square=False,
-                input_data_format=ChannelDimension.FIRST,
             )
         elif size.max_height and size.max_width:
             new_size = get_image_size_for_max_height_width(image.size()[-2:], size.max_height, size.max_width)

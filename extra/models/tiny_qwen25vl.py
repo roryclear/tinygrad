@@ -3,11 +3,12 @@ import torch
 import cv2
 import urllib
 import numpy as np
+from copy import deepcopy
 from huggingface_hub import hf_hub_download
 from safetensors import safe_open
 from transformers import AutoConfig
 from transformers.models.qwen2_vl.modeling_qwen2_vl import Qwen2VLPreTrainedModel
-from transformers.image_processing_utils import ImageProcessingMixin, ImagesKwargs, Unpack, ImageInput, Iterable, deepcopy, get_size_dict, SizeDict, validate_typed_dict, validate_preprocess_arguments, make_flat_list_of_images, partial
+from transformers.image_processing_utils import ImageProcessingMixin, ImagesKwargs, Iterable, get_size_dict, SizeDict, validate_typed_dict, partial
 from transformers.image_processing_backends import ChannelDimension, BatchFeature, convert_to_rgb, infer_channel_dimension_format, tvF
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessorKwargs
 from transformers.modeling_utils import PreTrainedModel
@@ -130,141 +131,13 @@ def smart_resize(
     return h_bar, w_bar
 
 class BaseImageProcessor(ImageProcessingMixin):
-    r"""
-    Base class for image processors with an inheritance-based backend architecture.
-
-    This class defines the preprocessing pipeline: kwargs validation, input preparation, and dispatching to the
-    backend's `_preprocess` method. Backend subclasses (`TorchvisionBackend`, `PilBackend`) inherit from this class
-    and implement the actual image operations (resize, crop, rescale, normalize, etc.). Model-specific image
-    processors then inherit from the appropriate backend class.
-
-    Architecture Overview
-    ---------------------
-
-    The class hierarchy is:
-
-        BaseImageProcessor (this class)
-        ├── TorchvisionBackend    (GPU-accelerated, torch.Tensor)
-        │   └── ModelImageProcessor (e.g. LlavaNextImageProcessor)
-        └── PilBackend            (portable CPU, np.ndarray)
-            └── ModelImageProcessorPil (e.g. CLIPImageProcessorPil)
-
-    The preprocessing flow is:
-
-        __call__() → preprocess() → _preprocess_image_like_inputs() → _prepare_image_like_inputs()
-                                                                       (calls process_image per image)
-                                                                     → _preprocess()
-                                                                       (batch operations: resize, crop, etc.)
-
-    - `process_image`: Implemented by backends. Converts a single raw input (PIL, NumPy, or Tensor) to the
-      backend's working format (torch.Tensor or np.ndarray), handles RGB conversion and channel reordering.
-    - `_preprocess`: Implemented by backends. Performs the actual batch processing (resize, center crop, rescale,
-      normalize, pad) and returns a `BatchFeature`.
-
-    Basic Implementation
-    --------------------
-
-    For processors that only need standard operations (resize, center crop, rescale, normalize), inherit from
-    a backend and define class attributes:
-
-        from transformers.image_processing_backends import PilBackend
-
-        class MyImageProcessorPil(PilBackend):
-            resample = PILImageResampling.BILINEAR
-            image_mean = IMAGENET_DEFAULT_MEAN
-            image_std = IMAGENET_DEFAULT_STD
-            size = {"height": 224, "width": 224}
-            do_resize = True
-            do_rescale = True
-            do_normalize = True
-
-    The backend's `_preprocess` method handles the standard pipeline automatically.
-
-    Custom Processing
-    -----------------
-
-    For processors that need custom logic (e.g., patch-based processing, multiple input types), override
-    `_preprocess` in your model-specific processor. The `_preprocess` method receives already-prepared images
-    (converted to the backend format with channels-first ordering) and performs the actual processing:
-
-        class MyImageProcessor(TorchvisionBackend):
-            def _preprocess(self, images, do_resize, size, do_normalize, image_mean, image_std, **kwargs):
-                # Group images by shape for efficient batched operations
-                grouped_images, grouped_images_index = group_images_by_shape(images)
-                processed_groups = {}
-                for shape, stacked_images in grouped_images.items():
-                    if do_resize:
-                        stacked_images = self.resize(stacked_images, size=size)
-                    if do_normalize:
-                        stacked_images = self.normalize(stacked_images, mean=image_mean, std=image_std)
-                    processed_groups[shape] = stacked_images
-                processed_images = reorder_images(processed_groups, grouped_images_index)
-                return BatchFeature(data={"pixel_values": processed_images})
-
-    For processors handling multiple input types (e.g., images + segmentation maps), override
-    `_preprocess_image_like_inputs`:
-
-        def _preprocess_image_like_inputs(
-            self,
-            images: ImageInput,
-            segmentation_maps: ImageInput | None = None,
-            **kwargs,
-        ) -> BatchFeature:
-            images = self._prepare_image_like_inputs(images, **kwargs)
-            batch_feature = self._preprocess(images, **kwargs)
-
-            if segmentation_maps is not None:
-                maps = self._prepare_image_like_inputs(segmentation_maps, **kwargs)
-                batch_feature["labels"] = self._preprocess(maps, **kwargs).pixel_values
-
-            return batch_feature
-
-    Extending Backend Behavior
-    --------------------------
-
-    To customize operations for a specific backend, subclass the backend and override its methods:
-
-        from transformers.image_processing_backends import TorchvisionBackend, PilBackend
-
-        class MyTorchvisionProcessor(TorchvisionBackend):
-            def resize(self, image, size, **kwargs):
-                # Custom resize logic for torchvision
-                return super().resize(image, size, **kwargs)
-
-        class MyPilProcessor(PilBackend):
-            def resize(self, image, size, **kwargs):
-                # Custom resize logic for PIL
-                return super().resize(image, size, **kwargs)
-
-    Custom Parameters
-    -----------------
-
-    To add parameters beyond `ImagesKwargs`, create a custom kwargs class and set it as `valid_kwargs`:
-
-        class MyImageProcessorKwargs(ImagesKwargs):
-            custom_param: int | None = None
-
-        class MyImageProcessor(TorchvisionBackend):
-            valid_kwargs = MyImageProcessorKwargs
-            custom_param = 10  # default value
-
-    Key Notes
-    ---------
-
-    - Backend selection is done at the class level: inherit from `TorchvisionBackend` or `PilBackend`
-    - Backends receive images as `torch.Tensor` (Torchvision) or `np.ndarray` (PIL), always channels-first
-    - All images have channel dimension first during processing, regardless of backend
-    - Arguments not provided by users default to class attribute values
-    - Backend classes encapsulate backend-specific logic (resize, normalize, etc.) and can be overridden
-    """
-
     valid_kwargs = ImagesKwargs
 
     default_to_square = True
     rescale_factor = 1 / 255
     model_input_names = ["pixel_values"]
 
-    def __init__(self, **kwargs: Unpack[ImagesKwargs]):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
         # We don't call self._set_attributes in BaseImageProcessor for backward compatibility with remote code
         # We call it instead in the backend subclasses' __init__ methods.
@@ -284,7 +157,7 @@ class BaseImageProcessor(ImageProcessingMixin):
 
         self._valid_kwargs_names = list(self.valid_kwargs.__annotations__.keys())
 
-    def __call__(self, images: ImageInput, *args, **kwargs: Unpack[ImagesKwargs]) -> BatchFeature:
+    def __call__(self, images, *args, **kwargs) -> BatchFeature:
         """Preprocess an image or a batch of images."""
         return self.preprocess(images, *args, **kwargs)
 
@@ -313,28 +186,18 @@ class BaseImageProcessor(ImageProcessingMixin):
 
     def _prepare_images_structure(
         self,
-        images: ImageInput,
+        images,
         expected_ndims: int = 3,
-    ) -> ImageInput:
-        """
-        Prepare the images structure for processing.
-
-        Args:
-            images (`ImageInput`):
-                The input images to process.
-
-        Returns:
-            `ImageInput`: The images with a valid nesting.
-        """
+    ):
         images = self.fetch_images(images)
-        return make_flat_list_of_images(images, expected_ndims=expected_ndims)
+        return [images]
 
     def _prepare_image_like_inputs(
         self,
-        images: ImageInput,
+        images,
         *args,
         expected_ndims: int = 3,
-        **kwargs: Unpack[ImagesKwargs],
+        **kwargs,
     ) -> list[Any]:
         """
         Prepare image-like inputs for processing by converting each image via `process_image`.
@@ -368,9 +231,9 @@ class BaseImageProcessor(ImageProcessingMixin):
 
     def _preprocess_image_like_inputs(
         self,
-        images: ImageInput,
+        images,
         *args,
-        **kwargs: Unpack[ImagesKwargs],
+        **kwargs,
     ) -> BatchFeature:
         """
         Preprocess image-like inputs by preparing them and dispatching to `_preprocess`.
@@ -421,42 +284,13 @@ class BaseImageProcessor(ImageProcessingMixin):
     # Backwards compatibility for method that was renamed
     _further_process_kwargs = _standardize_kwargs
 
-    def _validate_preprocess_kwargs(
-        self,
-        do_rescale: bool | None = None,
-        rescale_factor: float | None = None,
-        do_normalize: bool | None = None,
-        image_mean: float | tuple[float] | None = None,
-        image_std: float | tuple[float] | None = None,
-        do_resize: bool | None = None,
-        size: SizeDict | None = None,
-        do_center_crop: bool | None = None,
-        crop_size: SizeDict | None = None,
-        resample: "PILImageResampling | tvF.InterpolationMode | int | None" = None,
-        **kwargs,
-    ):
-        """
-        Validate the kwargs for the preprocess method.
-        """
-        validate_preprocess_arguments(
-            do_rescale=do_rescale,
-            rescale_factor=rescale_factor,
-            do_normalize=do_normalize,
-            image_mean=image_mean,
-            image_std=image_std,
-            do_center_crop=do_center_crop,
-            crop_size=crop_size,
-            do_resize=do_resize,
-            size=size,
-            resample=resample,
-        )
 
     def preprocess(
         self,
-        images: ImageInput,
+        images,
         *args,
         image_like_kwargs: dict[str, Any] | None = None,
-        **kwargs: Unpack[ImagesKwargs],
+        **kwargs,
     ) -> BatchFeature:
         # Perform type validation on received kwargs
         validate_typed_dict(self.valid_kwargs, kwargs)
@@ -467,9 +301,6 @@ class BaseImageProcessor(ImageProcessingMixin):
 
         # Update kwargs that need further processing before being validated
         kwargs = self._standardize_kwargs(**kwargs)
-
-        # Validate kwargs
-        self._validate_preprocess_kwargs(**kwargs)
 
         # This is a workaround when adding new image like inputs to existing processors where we cannot
         # modify the order of the input arguments for BC. For details see:

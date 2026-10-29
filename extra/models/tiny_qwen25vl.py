@@ -14,7 +14,7 @@ from safetensors import safe_open
 from transformers import AutoConfig
 from transformers.image_processing_utils import ImagesKwargs, SizeDict, validate_typed_dict
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessorKwargs
-from transformers.modeling_utils import EmbeddingAccessMixin, ModuleUtilsMixin, PushToHubMixin, PeftAdapterMixin, DistributedMixin, PreTrainedConfig, GenerationConfig, OutputRecorder
+from transformers.modeling_utils import EmbeddingAccessMixin, ModuleUtilsMixin, PushToHubMixin, PeftAdapterMixin, DistributedMixin, PreTrainedConfig, GenerationConfig
 from transformers.modeling_layers import GradientCheckpointingLayer
 from tinygrad import Tensor, dtypes
 from typing import Any
@@ -101,52 +101,7 @@ class PreTrainedModel(
         # Models predating `layer_types` (Mistral, for one) apply a sliding window to every layer whenever
         # `sliding_window` is set.
         return getattr(config, "sliding_window", None) is None
-
-    @property
-    @torch.compiler.allow_in_graph
-    def can_record_outputs(self) -> dict[str, OutputRecorder]:
-        """
-         Maps output names (e.g., "attentions", "hidden_states")
-         to either:
-             - A module class (e.g., `LlamaDecoderLayer`), using default index conventions:
-                 * index = 0 for a key that contains "hidden_states" (e.g. "hidden_states" or "vision_hidden_states")
-                 * index = 1 for any other key: "attentions", "cross_attentions", etc.
-             - A class name as a string, when the class is not importable at declaration time.
-             - An `OutputRecorder(...)` with `target_class`, optional `index`, and `layer_name`.
-             - A list of any of the above, to record outputs from several module types under one key.
-
-         Examples:
-             These two are equivalent:
-
-         ```python
-             _can_record_outputs = {
-                 "attentions": LlamaAttention,
-                 "hidden_states": LlamaDecoderLayer
-             }
-
-             _can_record_outputs = {
-                 "attentions": OutputRecorder(LlamaAttention, index=1),
-                 "hidden_states": OutputRecorder(LlamaDecoderLayer, index=0)
-             }
-        ```
-
-         This means you can record outputs from the same class, by specifying a layer name. Before
-         collecting outputs, we check that they come from this layer.
-
-         If you have cross attention that come from `LlamaAttention` and self attention that also
-         come from `LlamaAttention` but from `self_attn` you can do this:
-
-         ```python
-         class LlamaModel(PreTrainedModel):
-             _can_record_outputs = {
-                 "attentions": OutputRecorder(LlamaAttention, index=1, layer_name="self_attn"),
-                 "cross_attentions": OutputRecorder(LlamaAttention, index=1, layer_name="cross_attn")
-             }
-
-        ```
-        """
-        return self._can_record_outputs or {}
-
+    
     @property
     def dummy_inputs(self) -> dict[str, torch.Tensor]:
         """

@@ -12,7 +12,7 @@ from safetensors import safe_open
 from transformers import AutoConfig
 from transformers.image_processing_utils import ImagesKwargs, SizeDict, validate_typed_dict
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessorKwargs
-from transformers.modeling_utils import EmbeddingAccessMixin, ModuleUtilsMixin, PushToHubMixin, PeftAdapterMixin, DistributedMixin, PreTrainedConfig, GenerationConfig, OutputRecorder, Callable, inspect, get_type_hints, hub_kernels, is_flash_attention_requested, is_kernel, ALL_ATTENTION_FUNCTIONS, get_torch_context_manager_or_global_device, init
+from transformers.modeling_utils import EmbeddingAccessMixin, ModuleUtilsMixin, PushToHubMixin, PeftAdapterMixin, DistributedMixin, PreTrainedConfig, GenerationConfig, OutputRecorder, Callable, inspect, get_type_hints, hub_kernels, is_flash_attention_requested, is_kernel, get_torch_context_manager_or_global_device, init
 from transformers.modeling_layers import GradientCheckpointingLayer
 from tinygrad import Tensor, dtypes
 from typing import Any
@@ -737,22 +737,6 @@ class PreTrainedModel(
 
     def get_correct_attn_implementation(self, requested_attention: str | None, is_init_check: bool = False) -> str:
         applicable_attention = "sdpa" if requested_attention is None else requested_attention
-        if applicable_attention not in ["eager"] + ALL_ATTENTION_FUNCTIONS.valid_keys():
-            message = (
-                f'Specified `attn_implementation="{applicable_attention}"` is not supported. The only possible arguments are '
-                '`attn_implementation="eager"`, `"paged|eager"`'
-            )
-            # check `supports_flash_attn_2` for BC with custom code. TODO: remove after a few releases
-            if self._supports_flash_attn or getattr(self, "_supports_flash_attn_2", False):
-                message += ", "
-                for fa_version in FLASH_ATTENTION_COMPATIBILITY_MATRIX.keys():
-                    message += f'`"attn_implementation=flash_attention_{fa_version}"`, '
-                message = message[:-2]  # remove trailing comma
-            if self._supports_sdpa:
-                message += ', `"attn_implementation=sdpa"`'
-            if self._supports_flex_attn:
-                message += ', `"attn_implementation=flex_attention"`'
-            raise ValueError(message + ".")
 
         # Perform relevant checks
         if is_flash_attention_requested(requested_attention_implementation=applicable_attention) and (

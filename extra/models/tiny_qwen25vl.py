@@ -2,15 +2,17 @@ import json
 import torch
 import cv2
 import urllib
+import re
 import numpy as np
 from copy import deepcopy
+from functools import partial
+from torchvision.transforms.v2 import functional as tvF
 from huggingface_hub import hf_hub_download
 from safetensors import safe_open
 from transformers import AutoConfig
-from transformers.image_processing_utils import ImagesKwargs, SizeDict, validate_typed_dict, partial
-from transformers.image_processing_backends import tvF
+from transformers.image_processing_utils import ImagesKwargs, SizeDict, validate_typed_dict
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessorKwargs
-from transformers.modeling_utils import EmbeddingAccessMixin, ModuleUtilsMixin, PushToHubMixin, PeftAdapterMixin, DistributedMixin, PreTrainedConfig, GenerationConfig, OutputRecorder, Callable, checkpoint, os, KernelConfig, SpecificPreTrainedModelType, LoadStateDictConfig, LoadStateDictInfo, CompileConfig, HfQuantizer, Iterator, inspect, get_type_hints, hub_kernels, is_flash_attention_requested, is_kernel, ALL_ATTENTION_FUNCTIONS, ALL_EXPERTS_FUNCTIONS, ALL_FP8_EXPERTS_FUNCTIONS, sys, LOSS_MAPPING, re, _CAN_RECORD_REGISTRY, get_torch_context_manager_or_global_device, init, ROPE_INIT_FUNCTIONS
+from transformers.modeling_utils import EmbeddingAccessMixin, ModuleUtilsMixin, PushToHubMixin, PeftAdapterMixin, DistributedMixin, PreTrainedConfig, GenerationConfig, OutputRecorder, Callable, inspect, get_type_hints, hub_kernels, is_flash_attention_requested, is_kernel, ALL_ATTENTION_FUNCTIONS, ALL_EXPERTS_FUNCTIONS, ALL_FP8_EXPERTS_FUNCTIONS, LOSS_MAPPING, _CAN_RECORD_REGISTRY, get_torch_context_manager_or_global_device, init
 from transformers.modeling_layers import GradientCheckpointingLayer
 from tinygrad import Tensor, dtypes
 from typing import Any
@@ -796,74 +798,6 @@ class PreTrainedModel(
         valid_experts_str_list[-1] = "and " + valid_experts_str_list[-1]
         return applicable_experts
 
-
-    @torch.no_grad()
-    def _init_weights(self, module):
-        """
-        Initialize the weights. This is quite general on purpose, in the spirit of what we usually do. For more complex
-        initialization scheme, it should be overridden by the derived `PreTrainedModel` class. In case a model adds an explicit
-        `nn.Parameter`, this method should also be overridden in order to initialize it correctly.
-        """
-        if hasattr(self.config, "initializer_range"):
-            std = self.config.initializer_range or 0.02
-        elif hasattr(self.config, "init_std"):
-            std = self.config.init_std
-        elif hasattr(self.config, "initializer_factor"):
-            std = self.config.initializer_factor
-        else:
-            # 0.02 is the standard default value across the library
-            std = getattr(self.config.get_text_config(), "initializer_range", 0.02)
-
-        if isinstance(module, (nn.Linear, nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.ConvTranspose1d, nn.ConvTranspose2d)):
-            if getattr(module, "weight", None) is not None:
-                init.normal_(module.weight, mean=0.0, std=std)
-            if module.bias is not None:
-                init.zeros_(module.bias)
-        elif isinstance(module, nn.LSTM):
-            for name, param in module.named_parameters():
-                if "weight" in name:
-                    init.xavier_uniform_(param)
-                elif "bias" in name:
-                    init.constant_(param, 0.0)
-        elif isinstance(module, nn.Embedding):
-            init.normal_(module.weight, mean=0.0, std=std)
-            # Here we need the check explicitly, as we slice the weight in the `zeros_` call, so it looses the flag
-            if module.padding_idx is not None and not getattr(module.weight, "_is_hf_initialized", False):
-                init.zeros_(module.weight[module.padding_idx])
-        elif isinstance(module, nn.MultiheadAttention):
-            # This uses torch's original init
-            module._reset_parameters()
-        # We cannot use `isinstance` on the RMSNorms or LayerNorms, as they usually are custom modules which change names
-        # between modelings (because they are prefixed with the model name)
-        elif (
-            isinstance(module, (nn.GroupNorm, nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d))
-            or "LayerNorm" in module.__class__.__name__
-            or "RMSNorm" in module.__class__.__name__
-        ):
-            # Norms can exist without weights (in which case they are None from torch primitives)
-            if getattr(module, "weight", None) is not None:
-                init.ones_(module.weight)
-            if getattr(module, "bias", None) is not None:
-                init.zeros_(module.bias)
-            # And the potential buffers for the BatchNorms
-            if getattr(module, "running_mean", None) is not None:
-                init.zeros_(module.running_mean)
-                init.ones_(module.running_var)
-                init.zeros_(module.num_batches_tracked)
-        # This matches all the usual RotaryEmbeddings modules
-        elif "RotaryEmbedding" in module.__class__.__name__ and hasattr(module, "original_inv_freq"):
-            # Default, vision axial and NTK-alpha rope are defined in modeling files, only one can be defined at a time!
-            rope_init_fn_with_self = {
-                "axial": getattr(module, "compute_axial_rope_parameters", None),
-                "ntk_alpha": getattr(module, "compute_ntk_alpha_rope_parameters", None),
-                "default": getattr(module, "compute_default_rope_parameters", None),
-                **ROPE_INIT_FUNCTIONS,
-            }
-            rope_fn = rope_init_fn_with_self[module.rope_type]
-            buffer_value, _ = rope_fn(module.config)
-            init.copy_(module.inv_freq, buffer_value)
-            init.copy_(module.original_inv_freq, buffer_value)
-
     def _initialize_weights(self, module, is_custom_code: bool = False):
         """
         Initialize the weights if they are not already initialized.
@@ -886,7 +820,6 @@ class PreTrainedModel(
             module._is_hf_initialized = True
             return
 
-        self._init_weights(module)
         module._is_hf_initialized = True
 
     @torch.no_grad()

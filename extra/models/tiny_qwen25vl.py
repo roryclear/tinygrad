@@ -12,7 +12,7 @@ from safetensors import safe_open
 from transformers import AutoConfig
 from transformers.image_processing_utils import ImagesKwargs, SizeDict, validate_typed_dict
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessorKwargs
-from transformers.modeling_utils import EmbeddingAccessMixin, ModuleUtilsMixin, PushToHubMixin, PeftAdapterMixin, DistributedMixin, PreTrainedConfig, GenerationConfig, OutputRecorder, Callable, inspect, get_type_hints, hub_kernels, is_flash_attention_requested, is_kernel, ALL_ATTENTION_FUNCTIONS, ALL_EXPERTS_FUNCTIONS, ALL_FP8_EXPERTS_FUNCTIONS, get_torch_context_manager_or_global_device, init
+from transformers.modeling_utils import EmbeddingAccessMixin, ModuleUtilsMixin, PushToHubMixin, PeftAdapterMixin, DistributedMixin, PreTrainedConfig, GenerationConfig, OutputRecorder, Callable, inspect, get_type_hints, hub_kernels, is_flash_attention_requested, is_kernel, ALL_ATTENTION_FUNCTIONS, get_torch_context_manager_or_global_device, init
 from transformers.modeling_layers import GradientCheckpointingLayer
 from tinygrad import Tensor, dtypes
 from typing import Any
@@ -732,15 +732,6 @@ class PreTrainedModel(
         return applicable_attn_implementation
 
     def _check_and_adjust_experts_implementation(self, experts_implementation: str | None) -> str:
-        """
-        Check that the `experts_implementation` exists and is supported by the models.
-
-        Args:
-            experts_implementation (`str` or `None`):
-                The experts implementation to check for existence/validity.
-        Returns:
-            `str`: The final experts implementation to use.
-        """
         applicable_experts_implementation = self.get_correct_experts_implementation(experts_implementation)
         return applicable_experts_implementation
 
@@ -784,9 +775,6 @@ class PreTrainedModel(
 
     def get_correct_experts_implementation(self, requested_experts: str | None) -> str:
         applicable_experts = "grouped_mm" if requested_experts is None else requested_experts
-        base_experts_fns = ["eager"] + list(set(ALL_EXPERTS_FUNCTIONS.keys()) | set(ALL_FP8_EXPERTS_FUNCTIONS.keys()))
-        valid_experts_str_list = [f'`experts_implementation="{fn}"`' for fn in base_experts_fns]
-        valid_experts_str_list[-1] = "and " + valid_experts_str_list[-1]
         return applicable_experts
 
     def _initialize_weights(self, module, is_custom_code: bool = False):

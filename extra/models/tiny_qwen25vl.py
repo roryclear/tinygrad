@@ -12,7 +12,7 @@ from safetensors import safe_open
 from transformers import AutoConfig
 from transformers.image_processing_utils import ImagesKwargs, SizeDict, validate_typed_dict
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessorKwargs
-from transformers.modeling_utils import EmbeddingAccessMixin, ModuleUtilsMixin, PushToHubMixin, PeftAdapterMixin, DistributedMixin, PreTrainedConfig, GenerationConfig, OutputRecorder, Callable, inspect, get_type_hints, hub_kernels, is_flash_attention_requested, is_kernel, ALL_ATTENTION_FUNCTIONS, ALL_EXPERTS_FUNCTIONS, ALL_FP8_EXPERTS_FUNCTIONS, LOSS_MAPPING, _CAN_RECORD_REGISTRY, get_torch_context_manager_or_global_device, init
+from transformers.modeling_utils import EmbeddingAccessMixin, ModuleUtilsMixin, PushToHubMixin, PeftAdapterMixin, DistributedMixin, PreTrainedConfig, GenerationConfig, OutputRecorder, Callable, inspect, get_type_hints, hub_kernels, is_flash_attention_requested, is_kernel, ALL_ATTENTION_FUNCTIONS, ALL_EXPERTS_FUNCTIONS, ALL_FP8_EXPERTS_FUNCTIONS, LOSS_MAPPING, get_torch_context_manager_or_global_device, init
 from transformers.modeling_layers import GradientCheckpointingLayer
 from tinygrad import Tensor, dtypes
 from typing import Any
@@ -220,8 +220,6 @@ class PreTrainedModel(
             else:
                 loss_type = None
         self.loss_type = loss_type
-
-        _CAN_RECORD_REGISTRY[str(self.__class__)] = self._can_record_outputs  # added for executorch support only
 
     def post_init(self):
         """
@@ -1700,41 +1698,6 @@ class Qwen2_5_VLPreTrainedModel:
     _can_compile_fullgraph = True
     _supports_attention_backend = True
 
-class Qwen2_5_VisionTransformerPretrainedModel(Qwen2_5_VLPreTrainedModel):
-    config: Any
-    _no_split_modules = ["Qwen2_5_VLVisionBlock"]
-    _input_embed_layer = "patch_embed"
-    _can_record_outputs = {
-        "hidden_states": Any,
-        "attentions": Any,
-    }
-
-    def __init__(self, config, *inputs, **kwargs) -> None:
-        super().__init__(config, *inputs, **kwargs)
-        self.spatial_merge_size = config.spatial_merge_size
-        self.patch_size = config.patch_size
-        self.fullatt_block_indexes = config.fullatt_block_indexes
-        self.window_size = config.window_size
-        self.spatial_merge_unit = self.spatial_merge_size * self.spatial_merge_size
-
-        self.patch_embed = Qwen2_5_VisionPatchEmbed(
-            patch_size=config.patch_size,
-            temporal_patch_size=config.temporal_patch_size,
-            in_channels=config.in_channels,
-            embed_dim=config.hidden_size,
-        )
-
-        self.rotary_pos_emb = Qwen2_5_VLVisionRotaryEmbedding(config)
-
-        self.blocks = nn.ModuleList([Qwen2_5_VLVisionBlock(config) for _ in range(config.depth)])
-        self.merger = Qwen2_5_VLPatchMerger(
-            dim=config.out_hidden_size,
-            context_dim=config.hidden_size,
-            spatial_merge_size=config.spatial_merge_size,
-        )
-        self.gradient_checkpointing = False
-
-        self.post_init()
 
     def permute_input_for_window_attn(self, input_tensor: torch.Tensor, window_index: torch.Tensor, seq_len: int):
         input_tensor = input_tensor.reshape(seq_len // self.spatial_merge_unit, self.spatial_merge_unit, -1)

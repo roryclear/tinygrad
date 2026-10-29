@@ -1588,24 +1588,18 @@ class Qwen2_5_VLVisionRotaryEmbedding(nn.Module):
     The final angles rotate over the whole head dim, no partial rotation involved.
     """
 
-    def __init__(self, config: Any):
+    def __init__(self):
         super().__init__()
-
-        self.rope_type = config.rope_parameters["rope_type"]
-        rope_init_fn: Callable = self.compute_axial_rope_parameters
-        if self.rope_type != "axial":
-            raise ValueError(f"{self.__class__.__name__} supports only axial rope, but requested {self.rope_type}")
-        inv_freq, self.attention_scaling = rope_init_fn(config)
+        self.rope_type = "axial"
+        inv_freq, self.attention_scaling = self.compute_axial_rope_parameters()
 
         self.inv_freq = nn.Buffer(inv_freq, persistent=False)
         self.original_inv_freq = nn.Buffer(inv_freq.clone(), persistent=False)
 
     @staticmethod
-    def compute_axial_rope_parameters(
-        config: Any, device=None, **kwargs
-    ) -> tuple[torch.Tensor, float]:
-        base = config.rope_parameters["rope_theta"]
-        dim = getattr(config, "head_dim", None) or config.hidden_size // config.num_attention_heads
+    def compute_axial_rope_parameters(device=None, **kwargs):
+        base = 10000.0 # rope_theta
+        dim = 1280 // 16 # config.hidden_size // config.num_attention_heads
         spatial_dim = dim // 2
 
         attention_factor = 1.0  # Unused in this type of RoPE
@@ -1991,7 +1985,7 @@ class Qwen2_5_VisionTransformerPretrainedModel(Qwen2VLPreTrainedModel):
             embed_dim=1280, # hidden_size
         )
 
-        self.rotary_pos_emb = Qwen2_5_VLVisionRotaryEmbedding(config)
+        self.rotary_pos_emb = Qwen2_5_VLVisionRotaryEmbedding()
 
         self.blocks = nn.ModuleList([Qwen2_5_VLVisionBlock(config) for _ in range(config.depth)])
         self.merger = Qwen2_5_VLPatchMerger(

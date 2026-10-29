@@ -12,7 +12,7 @@ from safetensors import safe_open
 from transformers import AutoConfig
 from transformers.image_processing_utils import ImagesKwargs, SizeDict, validate_typed_dict
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessorKwargs
-from transformers.modeling_utils import EmbeddingAccessMixin, ModuleUtilsMixin, PushToHubMixin, PeftAdapterMixin, DistributedMixin, PreTrainedConfig, GenerationConfig, OutputRecorder, Callable, inspect, get_type_hints, hub_kernels, is_flash_attention_requested, is_kernel, ALL_ATTENTION_FUNCTIONS, ALL_EXPERTS_FUNCTIONS, ALL_FP8_EXPERTS_FUNCTIONS, LOSS_MAPPING, get_torch_context_manager_or_global_device, init
+from transformers.modeling_utils import EmbeddingAccessMixin, ModuleUtilsMixin, PushToHubMixin, PeftAdapterMixin, DistributedMixin, PreTrainedConfig, GenerationConfig, OutputRecorder, Callable, inspect, get_type_hints, hub_kernels, is_flash_attention_requested, is_kernel, ALL_ATTENTION_FUNCTIONS, ALL_EXPERTS_FUNCTIONS, ALL_FP8_EXPERTS_FUNCTIONS, get_torch_context_manager_or_global_device, init
 from transformers.modeling_layers import GradientCheckpointingLayer
 from tinygrad import Tensor, dtypes
 from typing import Any
@@ -212,13 +212,6 @@ class PreTrainedModel(
 
         # for initialization of the loss
         loss_type = self.__class__.__name__
-        if loss_type not in LOSS_MAPPING:
-            loss_groups = f"({'|'.join(LOSS_MAPPING)})"
-            loss_type = re.findall(loss_groups, self.__class__.__name__)
-            if len(loss_type) > 0:
-                loss_type = loss_type[0]
-            else:
-                loss_type = None
         self.loss_type = loss_type
 
     def post_init(self):

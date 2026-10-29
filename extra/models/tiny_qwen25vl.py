@@ -12,7 +12,7 @@ from torchvision.transforms.v2 import functional as tvF
 from huggingface_hub import hf_hub_download
 from safetensors import safe_open
 from transformers import AutoConfig
-from transformers.image_processing_utils import ImagesKwargs, SizeDict, validate_typed_dict
+from transformers.image_processing_utils import ImagesKwargs, SizeDict
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessorKwargs
 from transformers.modeling_layers import GradientCheckpointingLayer
 from tinygrad import Tensor, dtypes
@@ -1114,9 +1114,6 @@ class BaseImageProcessor:
         image_like_kwargs: dict[str, Any] | None = None,
         **kwargs,
     ):
-        # Perform type validation on received kwargs
-        validate_typed_dict(self.valid_kwargs, kwargs)
-
         # Set default kwargs from self
         for kwarg_name in self._valid_kwargs_names:
             kwargs.setdefault(kwarg_name, getattr(self, kwarg_name, None))

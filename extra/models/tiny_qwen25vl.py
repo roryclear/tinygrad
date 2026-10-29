@@ -129,28 +129,10 @@ class PreTrainedModel(nn.Module):
     def __init__(self, config, *inputs, **kwargs):
         super().__init__()
         self.config = config
-        self.name_or_path = config.name_or_path
+        self.name_or_path = ""
 
         # Make kernel_config an attribute that can be used by the model.
         self.kernel_config = None
-
-        # Check the attention implementation is supported, or set it if not yet set (on the internal attr, to avoid
-        # setting it recursively)
-        self.config._attn_implementation_internal = self._check_and_adjust_attn_implementation(
-            self.config._attn_implementation,
-            is_init_check=True,
-        )
-        # Check the experts implementation is supported, or set it if not yet set (on the internal attr, to avoid
-        # setting it recursively)
-        self.config._experts_implementation_internal = self._check_and_adjust_experts_implementation(
-            self.config._experts_implementation
-        )
-        if self.can_generate():
-            # `from_model_config` is a legacy behavior -- we shouldn't set generation flags in the model config
-            try:
-                self.generation_config = self.generation_config_class.from_model_config(config)
-            except NotImplementedError:
-                self.generation_config = self.generation_config_class()
 
         # for initialization of the loss
         loss_type = self.__class__.__name__
@@ -1690,16 +1672,15 @@ def eager_attention_forward(
     return attn_output, attn_weights
 
 class Qwen2_5_VLVisionAttention(nn.Module):
-    def __init__(self, config: Any) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.dim = config.hidden_size
-        self.num_heads = config.num_heads
+        self.dim = 1280 # hidden_size
+        self.num_heads = 16
         self.head_dim = self.dim // self.num_heads
         self.num_key_value_groups = 1  # needed for eager attention
         self.qkv = nn.Linear(self.dim, self.dim * 3, bias=True)
         self.proj = nn.Linear(self.dim, self.dim)
         self.scaling = self.head_dim**-0.5
-        self.config = config
         self.attention_dropout = 0.0
         self.is_causal = False
 
@@ -1749,10 +1730,10 @@ class Qwen2_5_VLVisionAttention(nn.Module):
         return attn_output
 
 class Qwen2_5_VLMLP(nn.Module):
-    def __init__(self, config, bias: bool = False):
+    def __init__(self, bias: bool = False):
         super().__init__()
-        self.hidden_size = config.hidden_size
-        self.intermediate_size = config.intermediate_size
+        self.hidden_size = 1280
+        self.intermediate_size = 3420
         self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=bias)
         self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=bias)
         self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=bias)
@@ -1762,12 +1743,12 @@ class Qwen2_5_VLMLP(nn.Module):
         return self.down_proj(self.act_fn(self.gate_proj(hidden_state)) * self.up_proj(hidden_state))
 
 class Qwen2_5_VLVisionBlock(GradientCheckpointingLayer):
-    def __init__(self, config, attn_implementation: str = "sdpa") -> None:
+    def __init__(self, attn_implementation: str = "sdpa") -> None:
         super().__init__()
-        self.norm1 = Qwen2_5_VLRMSNorm(config.hidden_size, eps=1e-6)
-        self.norm2 = Qwen2_5_VLRMSNorm(config.hidden_size, eps=1e-6)
-        self.attn = Qwen2_5_VLVisionAttention(config=config)
-        self.mlp = Qwen2_5_VLMLP(config, bias=True)
+        self.norm1 = Qwen2_5_VLRMSNorm(1280, eps=1e-6) # hidden_size
+        self.norm2 = Qwen2_5_VLRMSNorm(1280, eps=1e-6) # hidden_size
+        self.attn = Qwen2_5_VLVisionAttention()
+        self.mlp = Qwen2_5_VLMLP(bias=True)
 
     def forward(
         self,
@@ -1986,8 +1967,7 @@ class Qwen2_5_VisionTransformerPretrainedModel(Qwen2VLPreTrainedModel):
         )
 
         self.rotary_pos_emb = Qwen2_5_VLVisionRotaryEmbedding()
-
-        self.blocks = nn.ModuleList([Qwen2_5_VLVisionBlock(config) for _ in range(config.depth)])
+        self.blocks = nn.ModuleList([Qwen2_5_VLVisionBlock() for _ in range(32)])
         self.merger = Qwen2_5_VLPatchMerger(
             dim=2048, # out_hidden_size
             context_dim=1280, # hidden_size

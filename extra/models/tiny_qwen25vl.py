@@ -14,7 +14,7 @@ from safetensors import safe_open
 from transformers import AutoConfig
 from transformers.image_processing_utils import ImagesKwargs, SizeDict, validate_typed_dict
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessorKwargs
-from transformers.modeling_utils import EmbeddingAccessMixin, ModuleUtilsMixin, PushToHubMixin, PeftAdapterMixin, DistributedMixin, PreTrainedConfig, GenerationConfig
+from transformers.modeling_utils import EmbeddingAccessMixin, ModuleUtilsMixin, PushToHubMixin, PeftAdapterMixin, DistributedMixin
 from transformers.modeling_layers import GradientCheckpointingLayer
 from tinygrad import Tensor, dtypes
 from typing import Any
@@ -25,10 +25,9 @@ import math
 
 class PreTrainedModel(
     nn.Module, EmbeddingAccessMixin, ModuleUtilsMixin, PushToHubMixin, PeftAdapterMixin, DistributedMixin
-):
+):  
     # General model properties
-    config_class: type[PreTrainedConfig] | None = None
-    generation_config_class: type[GenerationConfig] = GenerationConfig  # default, used with `GenerationMixin`
+    config_class = None
     _auto_class = None
     base_model_prefix: str = ""
     _is_stateful: bool = False
@@ -130,14 +129,8 @@ class PreTrainedModel(
         elif full_attribute is not None:
             cls.config_class = full_attribute
 
-    def __init__(self, config: PreTrainedConfig, *inputs, **kwargs):
+    def __init__(self, config, *inputs, **kwargs):
         super().__init__()
-        if not isinstance(config, PreTrainedConfig):
-            raise TypeError(
-                f"Parameter config in `{self.__class__.__name__}(config)` should be an instance of class "
-                "`PreTrainedConfig`. To create a model from a pretrained model use "
-                f"`model = {self.__class__.__name__}.from_pretrained(PRETRAINED_MODEL_NAME)`"
-            )
         self.config = config
         self.name_or_path = config.name_or_path
 
@@ -1627,15 +1620,6 @@ class Qwen2_5_VLVisionRotaryEmbedding(nn.Module):
     def compute_axial_rope_parameters(
         config: Any, device=None, **kwargs
     ) -> tuple[torch.Tensor, float]:
-        """
-        Computes the inverse frequencies according to the original RoPE implementation
-        Args:
-            config ([`~transformers.PreTrainedConfig`]):
-                The model configuration.
-        Returns:
-            Tuple of (`torch.Tensor`, `float`), containing the inverse frequencies for the RoPE embeddings and the
-            post-processing scaling factor applied to the computed cos/sin (unused in this type of RoPE).
-        """
         base = config.rope_parameters["rope_theta"]
         dim = getattr(config, "head_dim", None) or config.hidden_size // config.num_attention_heads
         spatial_dim = dim // 2

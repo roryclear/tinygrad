@@ -12,7 +12,7 @@ from safetensors import safe_open
 from transformers import AutoConfig
 from transformers.image_processing_utils import ImagesKwargs, SizeDict, validate_typed_dict
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessorKwargs
-from transformers.modeling_utils import EmbeddingAccessMixin, ModuleUtilsMixin, PushToHubMixin, PeftAdapterMixin, DistributedMixin, PreTrainedConfig, GenerationConfig, OutputRecorder, Callable, inspect, get_type_hints, hub_kernels, is_kernel
+from transformers.modeling_utils import EmbeddingAccessMixin, ModuleUtilsMixin, PushToHubMixin, PeftAdapterMixin, DistributedMixin, PreTrainedConfig, GenerationConfig, OutputRecorder, Callable, inspect, get_type_hints
 from transformers.modeling_layers import GradientCheckpointingLayer
 from tinygrad import Tensor, dtypes
 from typing import Any
@@ -195,8 +195,6 @@ class PreTrainedModel(
         self.config._attn_implementation_internal = self._check_and_adjust_attn_implementation(
             self.config._attn_implementation,
             is_init_check=True,
-            # We need to use this constant that is set through context manager as it cannot be forwarded in the model's __init__
-            allow_all_kernels=hub_kernels.ALLOW_ALL_KERNELS,
         )
         # Check the experts implementation is supported, or set it if not yet set (on the internal attr, to avoid
         # setting it recursively)
@@ -672,29 +670,9 @@ class PreTrainedModel(
                 # Disabling this flag to avoid giving wrong fallbacks on errors and warnings
                 requested_original_flash_attn = False
 
-        if is_kernel(applicable_attn_implementation):
-            try:
-                # preload flash attention here to allow compile with fullgraph
-                lazy_import_flash_attention(applicable_attn_implementation, allow_all_kernels=allow_all_kernels)
-
-                # log that we used kernel fallback if successful
-                if requested_original_flash_attn:
-                    logger.warning_once(
-                        f"You do not have `flash_attn` installed, using `{applicable_attn_implementation}` "
-                        "from the `kernels` library instead!"
-                    )
-            except Exception as e:
-                # raise the proper exception for requested flash attention
-                if requested_original_flash_attn:
-                    fa_version = int(attn_implementation[-1])  # "flash_attention_(2|3|...)"
-                    self._flash_attn_can_dispatch(flash_attn_version=fa_version, is_init_check=is_init_check)
-
-                # error properly out if a kernel was specifically requested
-                raise e
-        else:
-            applicable_attn_implementation = self.get_correct_attn_implementation(
-                applicable_attn_implementation, is_init_check
-            )
+        applicable_attn_implementation = self.get_correct_attn_implementation(
+            applicable_attn_implementation, is_init_check
+        )
         return applicable_attn_implementation
 
     def _check_and_adjust_experts_implementation(self, experts_implementation: str | None) -> str:

@@ -14,7 +14,6 @@ from safetensors import safe_open
 from transformers import AutoConfig
 from transformers.image_processing_utils import ImagesKwargs, SizeDict, validate_typed_dict
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessorKwargs
-from transformers.modeling_utils import EmbeddingAccessMixin, ModuleUtilsMixin, PushToHubMixin, PeftAdapterMixin, DistributedMixin
 from transformers.modeling_layers import GradientCheckpointingLayer
 from tinygrad import Tensor, dtypes
 from typing import Any
@@ -23,9 +22,7 @@ import torch.nn.functional as F
 from collections import OrderedDict
 import math
 
-class PreTrainedModel(
-    nn.Module, EmbeddingAccessMixin, ModuleUtilsMixin, PushToHubMixin, PeftAdapterMixin, DistributedMixin
-):  
+class PreTrainedModel(nn.Module):  
     # General model properties
     config_class = None
     _auto_class = None
@@ -160,15 +157,6 @@ class PreTrainedModel(
         self.loss_type = loss_type
 
     def post_init(self):
-        """
-        A method executed at the end of each Transformer model initialization, to execute code that needs the model's
-        modules properly initialized (such as weight initialization).
-        It is also used to obtain all correct static properties (parallelism plans, tied_weights_keys, _keep_in_fp32_modules, etc)
-        correctly in the case of composite models (that is, the top level model should know about those properties from its children).
-        """
-        # Attach the different parallel plans and tied weight keys to the top-most model, so that everything is
-        # easily available.
-        self.init_parallel_plans()
         # Current submodel should register its tied weights
         self.all_tied_weights_keys = self.get_expanded_tied_weights_keys(all_submodels=False)
         # Current submodel should register its `_keep_in_fp32_modules`

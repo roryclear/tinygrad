@@ -1590,13 +1590,12 @@ class Qwen2_5_VLVisionRotaryEmbedding(nn.Module):
 
     def __init__(self, config: Any):
         super().__init__()
-        self.config = config
 
-        self.rope_type = self.config.rope_parameters["rope_type"]
+        self.rope_type = config.rope_parameters["rope_type"]
         rope_init_fn: Callable = self.compute_axial_rope_parameters
         if self.rope_type != "axial":
             raise ValueError(f"{self.__class__.__name__} supports only axial rope, but requested {self.rope_type}")
-        inv_freq, self.attention_scaling = rope_init_fn(self.config)
+        inv_freq, self.attention_scaling = rope_init_fn(config)
 
         self.inv_freq = nn.Buffer(inv_freq, persistent=False)
         self.original_inv_freq = nn.Buffer(inv_freq.clone(), persistent=False)
@@ -1980,26 +1979,25 @@ class Qwen2_5_VisionTransformerPretrainedModel(Qwen2VLPreTrainedModel):
 
     def __init__(self, config, *inputs, **kwargs) -> None:
         super().__init__(config, *inputs, **kwargs)
-        self.spatial_merge_size = config.spatial_merge_size
-        self.patch_size = config.patch_size
-        self.fullatt_block_indexes = config.fullatt_block_indexes
-        self.window_size = config.window_size
+        self.spatial_merge_size = 2
+        self.patch_size = 14
+        self.fullatt_block_indexes = [7, 15, 23, 31]
+        self.window_size = 112
         self.spatial_merge_unit = self.spatial_merge_size * self.spatial_merge_size
-
         self.patch_embed = PatchEmbed(
-            patch_size=config.patch_size,
-            temporal_patch_size=config.temporal_patch_size,
-            in_channels=config.in_channels,
-            embed_dim=config.hidden_size,
+            patch_size=self.patch_size,
+            temporal_patch_size=2,
+            in_channels=3,
+            embed_dim=1280, # hidden_size
         )
 
         self.rotary_pos_emb = Qwen2_5_VLVisionRotaryEmbedding(config)
 
         self.blocks = nn.ModuleList([Qwen2_5_VLVisionBlock(config) for _ in range(config.depth)])
         self.merger = Qwen2_5_VLPatchMerger(
-            dim=config.out_hidden_size,
-            context_dim=config.hidden_size,
-            spatial_merge_size=config.spatial_merge_size,
+            dim=2048, # out_hidden_size
+            context_dim=1280, # hidden_size
+            spatial_merge_size=2,
         )
         self.gradient_checkpointing = False
 

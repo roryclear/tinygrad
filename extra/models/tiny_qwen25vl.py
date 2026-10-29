@@ -12,7 +12,7 @@ from safetensors import safe_open
 from transformers import AutoConfig
 from transformers.image_processing_utils import ImagesKwargs, SizeDict, validate_typed_dict
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessorKwargs
-from transformers.modeling_utils import EmbeddingAccessMixin, ModuleUtilsMixin, PushToHubMixin, PeftAdapterMixin, DistributedMixin, PreTrainedConfig, GenerationConfig, OutputRecorder, Callable, inspect, get_type_hints, hub_kernels, is_flash_attention_requested, is_kernel, get_torch_context_manager_or_global_device, init
+from transformers.modeling_utils import EmbeddingAccessMixin, ModuleUtilsMixin, PushToHubMixin, PeftAdapterMixin, DistributedMixin, PreTrainedConfig, GenerationConfig, OutputRecorder, Callable, inspect, get_type_hints, hub_kernels, is_kernel, get_torch_context_manager_or_global_device, init
 from transformers.modeling_layers import GradientCheckpointingLayer
 from tinygrad import Tensor, dtypes
 from typing import Any
@@ -654,39 +654,10 @@ class PreTrainedModel(
         # Auto-correct model's default flash implementation if specified
         if attn_implementation is not None:
             compatible_flash_implementations = getattr(self, "_compatible_flash_implementations", None)
-            if (
-                is_flash_attention_requested(requested_attention_implementation=attn_implementation)
-                and compatible_flash_implementations is not None
-                and attn_implementation not in compatible_flash_implementations
-            ):
-                # Prefer the first implementation shipping builds for the current device
-                device = get_device_type()
-                supported_flash_implementations = [
-                    impl
-                    for impl in compatible_flash_implementations
-                    if device in FLASH_ATTN_KERNEL_DEVICES.get(FLASH_ATTN_KERNEL_FALLBACK.get(impl, impl), (device,))
-                ]
-                default_flash_implementation = (supported_flash_implementations or compatible_flash_implementations)[0]
-
-                logger.warning_once(
-                    f"This model is compatible with the following flash attention implementations: `{compatible_flash_implementations}`. "
-                    f"Automatically falling back to `{default_flash_implementation}` instead of `{attn_implementation}`."
-                )
-                attn_implementation = default_flash_implementation
 
         applicable_attn_implementation = attn_implementation
 
         requested_original_flash_attn = False
-        if is_flash_attention_requested(requested_attention_implementation=attn_implementation):
-            # If FA not installed, do not fail but use kernels instead if possible
-            for fa_version in FLASH_ATTENTION_COMPATIBILITY_MATRIX.keys():
-                # Check whether we have an original FA requested but not available in the env
-                if (
-                    attn_implementation == f"flash_attention_{fa_version}"
-                    and not FLASH_ATTENTION_COMPATIBILITY_MATRIX[fa_version]["general_availability_check"]()
-                ):
-                    requested_original_flash_attn = True
-                    break
 
         if (
             self._supports_flash_attn
@@ -724,11 +695,6 @@ class PreTrainedModel(
             applicable_attn_implementation = self.get_correct_attn_implementation(
                 applicable_attn_implementation, is_init_check
             )
-
-            # preload flash attention here to allow compile with fullgraph
-            if is_flash_attention_requested(requested_attention_implementation=applicable_attn_implementation):
-                lazy_import_flash_attention(applicable_attn_implementation)
-
         return applicable_attn_implementation
 
     def _check_and_adjust_experts_implementation(self, experts_implementation: str | None) -> str:
@@ -736,25 +702,8 @@ class PreTrainedModel(
         return applicable_experts_implementation
 
     def get_correct_attn_implementation(self, requested_attention: str | None, is_init_check: bool = False) -> str:
-        applicable_attention = "sdpa" if requested_attention is None else requested_attention
-
-        # Perform relevant checks
-        if is_flash_attention_requested(requested_attention_implementation=applicable_attention) and (
-            fa_matched := re.search(r"^flash_attention_(\d)$", applicable_attention)
-        ):
-            fa_version = int(fa_matched.group(1))  # last digit
-            self._flash_attn_can_dispatch(flash_attn_version=fa_version, is_init_check=is_init_check)
-        elif "flex_attention" in applicable_attention:
-            self._flex_attn_can_dispatch(is_init_check)
-        elif "sdpa" in applicable_attention:
-            # Sdpa is the default, so we try it and fallback to eager otherwise when not possible
-            try:
-                self._sdpa_can_dispatch(is_init_check)
-            except (ValueError, ImportError) as e:
-                if requested_attention is not None and "sdpa" in requested_attention:
-                    raise e
-                applicable_attention = "eager"
-
+        applicable_attention = "sdpa" if requested_attention is None else requested_attention        
+        
         return applicable_attention
 
     def get_correct_experts_implementation(self, requested_experts: str | None) -> str:

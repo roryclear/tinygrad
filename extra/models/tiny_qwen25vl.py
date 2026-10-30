@@ -12,13 +12,35 @@ from torchvision.transforms.v2 import functional as tvF
 from huggingface_hub import hf_hub_download
 from safetensors import safe_open
 from transformers import AutoConfig
-from transformers.image_processing_utils import ImagesKwargs, SizeDict
+from transformers.image_processing_utils import SizeDict
 from tinygrad import Tensor, dtypes
-from typing import Any
+from typing import Any, TypedDict
 import torch.nn as nn
 import torch.nn.functional as F
 from collections import OrderedDict
 import math
+
+class ImagesKwargs(TypedDict, total=False):
+    do_convert_rgb: bool | None
+    do_resize: bool | None
+    size: Any
+    default_to_square: bool | None
+    crop_size: Any
+    resample: Any
+    do_rescale: bool | None
+    rescale_factor: float | None
+    do_normalize: bool | None
+    image_mean: float | list[float] | tuple[float, ...] | None
+    image_std: float | list[float] | tuple[float, ...] | None
+    do_pad: bool | None
+    pad_size: Any
+    do_center_crop: bool | None
+    data_format: Any
+    input_data_format: Any
+    device: Any
+    return_tensors: Any
+    disable_grouping: bool | None
+    image_seq_length: int | None
 
 class Qwen2VLImageProcessorKwargs(ImagesKwargs, total=False):
     min_pixels: int

@@ -18,71 +18,6 @@ import torch.nn.functional as F
 from collections import OrderedDict
 import math
 
-class SizeDict:
-    """
-    Hashable dictionary to store image size information.
-    """
-
-    height: int | None = None
-    width: int | None = None
-    longest_edge: int | None = None
-    shortest_edge: int | None = None
-    max_height: int | None = None
-    max_width: int | None = None
-    min_pixels: int | None = None
-    max_pixels: int | None = None
-
-    def __getitem__(self, key):
-        if hasattr(self, key):
-            return getattr(self, key)
-        raise KeyError(f"Key {key} not found in SizeDict.")
-
-    def get(self, key, default=None):
-        if hasattr(self, key) and getattr(self, key) is not None:
-            return getattr(self, key)
-        return default
-
-    def __iter__(self):
-        # Yield only non-None (key, value) pairs so dict(self) excludes missing values.
-        for f in fields(self):
-            val = getattr(self, f.name)
-            if val is not None:
-                yield f.name, val
-
-    def __hash__(self):
-        return hash(astuple(self))
-
-    def __contains__(self, key):
-        return hasattr(self, key) and getattr(self, key) is not None
-
-    def __setitem__(self, key, value):
-        if not hasattr(self, key):
-            raise KeyError(f"Key {key} is not a valid field of SizeDict.")
-        object.__setattr__(self, key, value)
-
-    def __eq__(self, other):
-        if isinstance(other, dict):
-            return dict(self) == other
-        if isinstance(other, SizeDict):
-            return tuple(getattr(self, f.name) for f in fields(self)) == tuple(
-                getattr(other, f.name) for f in fields(self)
-            )
-        return NotImplemented
-
-    def __or__(self, other) -> "SizeDict":
-        if isinstance(other, dict | SizeDict):
-            merged = dict(self)
-            merged.update(dict(other))
-            return SizeDict(**merged)
-        return NotImplemented
-
-    def __ror__(self, other) -> dict:
-        if isinstance(other, dict):
-            merged = dict(other)
-            merged.update(dict(self))
-            return merged
-        return NotImplemented
-
 class ImagesKwargs(TypedDict, total=False):
     do_convert_rgb: bool | None
     do_resize: bool | None
@@ -1141,32 +1076,6 @@ class Qwen2VLImageProcessor(TorchvisionBackend):
         **kwargs,
     ):
         return super().preprocess(images, **kwargs)
-
-    def resize(
-        self,
-        images: "torch.Tensor",
-        size: Any,
-        resample: Any,
-        factor: int,
-        **kwargs,
-    ) -> "torch.Tensor":
-        """Resize dynamically based on input image aspect ratio."""
-        if not size.shortest_edge or not size.longest_edge:
-            raise ValueError(f"`size` dict must contain 'shortest_edge' and 'longest_edge' keys but got {size}.")
-
-        height, width = images.shape[-2:]
-        resized_height, resized_width = smart_resize(
-            height,
-            width,
-            factor=factor,
-            min_pixels=size.shortest_edge,
-            max_pixels=size.longest_edge,
-        )
-        return super().resize(
-            image=images,
-            size=SizeDict(height=resized_height, width=resized_width),
-            resample=resample,
-        )
 
     def patchify(
         self,

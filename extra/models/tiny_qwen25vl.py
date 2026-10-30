@@ -13,13 +13,19 @@ from huggingface_hub import hf_hub_download
 from safetensors import safe_open
 from transformers import AutoConfig
 from transformers.image_processing_utils import ImagesKwargs, SizeDict
-from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessorKwargs
 from tinygrad import Tensor, dtypes
 from typing import Any
 import torch.nn as nn
 import torch.nn.functional as F
 from collections import OrderedDict
 import math
+
+class Qwen2VLImageProcessorKwargs(ImagesKwargs, total=False):
+    min_pixels: int
+    max_pixels: int
+    patch_size: int
+    temporal_patch_size: int
+    merge_size: int
 
 class GradientCheckpointingLayer(nn.Module):
     gradient_checkpointing = False

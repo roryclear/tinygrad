@@ -112,43 +112,6 @@ class Qwen2VLImageProcessorKwargs(ImagesKwargs, total=False):
     temporal_patch_size: int
     merge_size: int
 
-class GradientCheckpointingLayer(nn.Module):
-    gradient_checkpointing = False
-    # Layers that only read the KV cache can set this to keep it under gradient checkpointing (the recompute reads the
-    # same states). Writers must leave it `False`, otherwise the cache is updated a second time on the backward replay.
-    _can_checkpoint_with_cache = False
-
-    def __call__(self, *args, **kwargs):
-        if self.gradient_checkpointing and self.training:
-            do_warn = False
-            layer_name = self.__class__.__name__
-            message = f"Caching is incompatible with gradient checkpointing in {layer_name}. Setting"
-
-            if "use_cache" in kwargs and kwargs["use_cache"]:
-                kwargs["use_cache"] = False
-                message += " `use_cache=False`,"
-                do_warn = True
-
-            if not self._can_checkpoint_with_cache:
-                # different names for the same thing in different layers
-                if "past_key_values" in kwargs and kwargs["past_key_values"] is not None:
-                    kwargs["past_key_values"] = None
-                    message += " `past_key_values=None`,"
-                    do_warn = True
-
-                if "layer_past" in kwargs and kwargs["layer_past"] is not None:
-                    kwargs["layer_past"] = None
-                    message += " `layer_past=None`,"
-                    do_warn = True
-
-            # warn if anything was changed
-            if do_warn:
-                message = message.rstrip(",") + "."
-                logger.warning_once(message)
-
-            return self._gradient_checkpointing_func(partial(super().__call__, **kwargs), *args)
-        return super().__call__(*args, **kwargs)
-
 class PreTrainedModel(nn.Module):  
     # General model properties
     config_class = None
@@ -196,8 +159,6 @@ class PreTrainedModel(nn.Module):
     # handled by `supports_context_parallel` below, so this stays `True` for almost everything.
     _supports_context_parallel: bool = True
 
-    # Advanced functionalities support
-    supports_gradient_checkpointing: bool = False
     _can_compile_fullgraph: bool = False
     # This flag signal that the model can be used as an efficient backend in TGI and vLLM
     # In practice, it means that they support attention (mask) interface functions, fully pass the kwargs
@@ -1483,7 +1444,7 @@ class Qwen2_5_VLMLP(nn.Module):
     def forward(self, hidden_state):
         return self.down_proj(self.act_fn(self.gate_proj(hidden_state)) * self.up_proj(hidden_state))
 
-class Qwen2_5_VLVisionBlock(GradientCheckpointingLayer):
+class Qwen2_5_VLVisionBlock(nn.Module):
     def __init__(self, attn_implementation: str = "sdpa") -> None:
         super().__init__()
         self.norm1 = Qwen2_5_VLRMSNorm(1280, eps=1e-6) # hidden_size
@@ -1674,7 +1635,6 @@ class PatchEmbed(nn.Module):
 class Qwen2VLPreTrainedModel(PreTrainedModel):
     base_model_prefix = "model"
     input_modalities = ("image", "video", "text")
-    supports_gradient_checkpointing = True
     _no_split_modules = ["Qwen2VLDecoderLayer", "Qwen2VLVisionBlock"]
     _skip_keys_device_placement = ["past_key_values"]
     _supports_flash_attn = True
@@ -1712,8 +1672,6 @@ class Qwen2_5_VisionTransformerPretrainedModel(Qwen2VLPreTrainedModel):
             context_dim=1280, # hidden_size
             spatial_merge_size=2,
         )
-        self.gradient_checkpointing = False
-
         self.post_init()
 
     def permute_input_for_window_attn(self, input_tensor: torch.Tensor, window_index: torch.Tensor, seq_len: int):

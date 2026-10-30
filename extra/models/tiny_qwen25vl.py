@@ -14,13 +14,49 @@ from safetensors import safe_open
 from transformers import AutoConfig
 from transformers.image_processing_utils import ImagesKwargs, SizeDict
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import Qwen2VLImageProcessorKwargs
-from transformers.modeling_layers import GradientCheckpointingLayer
 from tinygrad import Tensor, dtypes
 from typing import Any
 import torch.nn as nn
 import torch.nn.functional as F
 from collections import OrderedDict
 import math
+
+class GradientCheckpointingLayer(nn.Module):
+    gradient_checkpointing = False
+    # Layers that only read the KV cache can set this to keep it under gradient checkpointing (the recompute reads the
+    # same states). Writers must leave it `False`, otherwise the cache is updated a second time on the backward replay.
+    _can_checkpoint_with_cache = False
+
+    def __call__(self, *args, **kwargs):
+        if self.gradient_checkpointing and self.training:
+            do_warn = False
+            layer_name = self.__class__.__name__
+            message = f"Caching is incompatible with gradient checkpointing in {layer_name}. Setting"
+
+            if "use_cache" in kwargs and kwargs["use_cache"]:
+                kwargs["use_cache"] = False
+                message += " `use_cache=False`,"
+                do_warn = True
+
+            if not self._can_checkpoint_with_cache:
+                # different names for the same thing in different layers
+                if "past_key_values" in kwargs and kwargs["past_key_values"] is not None:
+                    kwargs["past_key_values"] = None
+                    message += " `past_key_values=None`,"
+                    do_warn = True
+
+                if "layer_past" in kwargs and kwargs["layer_past"] is not None:
+                    kwargs["layer_past"] = None
+                    message += " `layer_past=None`,"
+                    do_warn = True
+
+            # warn if anything was changed
+            if do_warn:
+                message = message.rstrip(",") + "."
+                logger.warning_once(message)
+
+            return self._gradient_checkpointing_func(partial(super().__call__, **kwargs), *args)
+        return super().__call__(*args, **kwargs)
 
 class PreTrainedModel(nn.Module):  
     # General model properties

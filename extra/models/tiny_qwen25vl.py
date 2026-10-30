@@ -874,8 +874,6 @@ class BaseImageProcessor:
         # Filter out None values that are class defaults
         filtered_dict = {}
         for key, value in processor_dict.items():
-            if isinstance(value, SizeDict):
-                value = dict(value)
             if value is None:
                 class_default = getattr(type(self), key, "NOT_FOUND")
                 # Keep None if user explicitly set it (class default is non-None)
@@ -926,7 +924,7 @@ class TorchvisionBackend(BaseImageProcessor):
     def resize(
         self,
         image: "torch.Tensor",
-        size: SizeDict,
+        size: Any,
         resample: "PILImageResampling | tvF.InterpolationMode | int | None" = None,
         antialias: bool = True,
         **kwargs,
@@ -1061,7 +1059,7 @@ class TorchvisionBackend(BaseImageProcessor):
     def center_crop(
         self,
         image: "torch.Tensor",
-        size: SizeDict,
+        size: Any,
         **kwargs,
     ) -> "torch.Tensor":
         """Center crop an image using Torchvision."""
